@@ -4,7 +4,8 @@ Three production-realistic agentic failure scenarios:
 
   1. Cloudflare Wall  — LangGraph agent hitting 403 Forbidden (FUTILE_ACTION)
   2. Delegation Deadlock — CrewAI-style delegation loop (FUTILE_ACTION)
-  3. Silent State Rot — LangGraph agent with broken tool returning null (STATE_STAGNATION)
+  3. Silent State Rot — LangGraph agent with broken tool returning null
+     (STATE_STAGNATION)
 
 No real API keys required. LLM behavior is simulated deterministically,
 isolating TokenCircuit's detection from network flakiness and cost.
@@ -16,32 +17,24 @@ import logging
 import os
 import sys
 import time
-from typing import Any, AsyncIterator, Optional
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
+from langchain_core.messages import AIMessage, ToolMessage
 
 from tokencircuit import (
     TokenCircuitConfig,
     TokenCircuitError,
-    StateStagnationError,
-    FutileActionError,
     instrument_langgraph,
 )
 from tokencircuit.config import load_config
-from tokencircuit.exceptions import TokenCircuitError as TCE
-from tokencircuit.interceptors.langgraph import LangGraphInterceptor
-from tokencircuit.detectors.composite import CompositeDetector, DetectionResult
+from tokencircuit.detectors.composite import CompositeDetector
+from tokencircuit.otel.hash_utils import compute_action_hash
 from tokencircuit.ring_buffer import RingBuffer
-from tokencircuit.otel.hash_utils import compute_action_hash, extract_tool_type_signature
-from tokencircuit.telemetry import compute_cost_estimate
 
-TokenCircuitError = TCE
+logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 
 try:
-    from langgraph.graph import StateGraph, MessagesState
     from langgraph.checkpoint.memory import MemorySaver
-    from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+    from langgraph.graph import MessagesState, StateGraph
 
     LANGGRAPH_AVAILABLE = True
 except ImportError:
@@ -66,7 +59,9 @@ def _real_cost(tokens: int, input_frac: float = 0.6) -> float:
     """Estimate real USD cost for token count."""
     input_t = int(tokens * input_frac)
     output_t = tokens - input_t
-    return (input_t / 1000 * _COST_PER_1K_INPUT) + (output_t / 1000 * _COST_PER_1K_OUTPUT)
+    input_cost = input_t / 1000 * _COST_PER_1K_INPUT
+    output_cost = output_t / 1000 * _COST_PER_1K_OUTPUT
+    return input_cost + output_cost
 
 
 def _projected_cost(iterations: int) -> float:
@@ -225,16 +220,25 @@ async def run_scenario_2():
     agent_role = "ResearchAgent"
     agent_key = f"agent_{agent_role}"
     tool_sig = "fetch_pricing(str)"
-    base_hash = compute_action_hash({"messages": [
-        AIMessage(
-            content="",
-            tool_calls=[{"name": "fetch_pricing", "args": {"product_id": "X-200"}, "id": "c1", "type": "tool_call"}],
-        ),
-        ToolMessage(
-            content=json.dumps({"status": "rate_limited", "retry_after": 60}),
-            tool_call_id="c1",
-        ),
-    ]})
+    base_hash = compute_action_hash({
+        "messages": [
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "name": "fetch_pricing",
+                        "args": {"product_id": "X-200"},
+                        "id": "c1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            ToolMessage(
+                content=json.dumps({"status": "rate_limited", "retry_after": 60}),
+                tool_call_id="c1",
+            ),
+        ]
+    })
 
     interrupted_at = 0
     signal_type = "NONE"
@@ -396,7 +400,11 @@ async def run_scenario_3():
         "double_alert": double_alert,
         "error_message": error_msg,
         "elapsed_seconds": round(elapsed, 3),
-        "pass": interrupted_at > 0 and signal_type == "STATE_STAGNATION" and state is not None,
+        "pass": (
+            interrupted_at > 0
+            and signal_type == "STATE_STAGNATION"
+            and state is not None
+        ),
     }
     return result
 
@@ -448,8 +456,10 @@ async def main():
 - Model simulated: {s1["model"]}
 - Interrupted at iteration: {s1["interrupted_at"]} / {s1["recursion_limit"]}
 - Signal type: {s1["signal_type"]}
-- Tokens consumed: {s1["tokens_consumed"]} (interrupted) vs ~{s1["tokens_projected_to_25"]} (projected to recursion limit)
-- Real cost: ${s1["cost_interrupted_usd"]} interrupted vs ${s1["cost_projected_usd"]} uninterrupted
+- Tokens consumed: {s1["tokens_consumed"]} interrupted vs \
+~{s1["tokens_projected_to_25"]} projected
+- Real cost: ${s1["cost_interrupted_usd"]} interrupted vs \
+${s1["cost_projected_usd"]} uninterrupted
 - Margin saved: ${s1["margin_saved_usd"]}
 - State preserved post-interrupt: {'YES' if s1["state_preserved"] else 'NO'}
 - Messages in state: {s1["messages_in_state"]}
@@ -464,8 +474,10 @@ async def main():
 - Signal type: {s2["signal_type"]}
 - Agent role identified: {s2["agent_role_detected"]}
 - Repeated tool signature: `{s2["tool_sig_repeated"]}`
-- Tokens consumed: {s2["tokens_consumed"]} (interrupted) vs ~{s2["tokens_projected_to_25"]} (projected to recursion limit)
-- Real cost: ${s2["cost_interrupted_usd"]} interrupted vs ${s2["cost_projected_usd"]} uninterrupted
+- Tokens consumed: {s2["tokens_consumed"]} interrupted vs \
+~{s2["tokens_projected_to_25"]} projected
+- Real cost: ${s2["cost_interrupted_usd"]} interrupted vs \
+${s2["cost_projected_usd"]} uninterrupted
 - Margin saved: ${s2["margin_saved_usd"]}
 - Elapsed: {s2["elapsed_seconds"]}s
 - Error message: `{s2["error_message"]}`
@@ -476,8 +488,10 @@ async def main():
 - Model simulated: {s3["model"]}
 - Interrupted at iteration: {s3["interrupted_at"]} / {s3["recursion_limit"]}
 - Signal type: {s3["signal_type"]}
-- Tokens consumed: {s3["tokens_consumed"]} (interrupted) vs ~{s3["tokens_projected_to_25"]} (projected to recursion limit)
-- Real cost: ${s3["cost_interrupted_usd"]} interrupted vs ${s3["cost_projected_usd"]} uninterrupted
+- Tokens consumed: {s3["tokens_consumed"]} interrupted vs \
+~{s3["tokens_projected_to_25"]} projected
+- Real cost: ${s3["cost_interrupted_usd"]} interrupted vs \
+${s3["cost_projected_usd"]} uninterrupted
 - Margin saved: ${s3["margin_saved_usd"]}
 - State preserved post-interrupt: {'YES' if s3["state_preserved"] else 'NO'}
 - Messages in state: {s3["messages_in_state"]}

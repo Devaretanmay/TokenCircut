@@ -73,8 +73,9 @@ class TestEdgeFunctionAuth:
         assert resp.status_code == 400
 
     def test_valid_payload_returns_201(self, ingest_url):
-        import httpx
         import os
+
+        import httpx
 
         api_key = os.environ.get("SUPABASE_ANON_KEY", "")
         if not api_key:

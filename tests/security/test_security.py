@@ -1,17 +1,16 @@
-import hashlib
 import json
 import threading
 import time as time_module
 
 import pytest
 
-from tokencircuit.ring_buffer import RingBuffer
 from tokencircuit.config import TokenCircuitConfig, load_config
-from tokencircuit.telemetry import TelemetryEvent, compute_cost_estimate
 from tokencircuit.otel.hash_utils import (
     compute_state_hash,
     extract_tool_type_signature,
 )
+from tokencircuit.ring_buffer import RingBuffer
+from tokencircuit.telemetry import TelemetryEvent, compute_cost_estimate
 
 
 def make_entry(state_hash="a", tool_sig="tool()", iteration=1):

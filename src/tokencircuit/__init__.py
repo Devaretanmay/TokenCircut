@@ -1,5 +1,8 @@
 from typing import Any
 
+__version__ = "0.1.0"
+VERSION = __version__
+
 from .config import TokenCircuitConfig, load_config
 from .exceptions import (
     FutileActionError,

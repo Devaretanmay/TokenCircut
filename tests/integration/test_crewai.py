@@ -28,7 +28,7 @@ class TestCrewAIIntegration:
 
     def test_loop_detected(self):
         """Build a 3-agent Crew with allow_delegation=True that loops."""
-        from crewai import Agent, Task, Crew, Process
+        from crewai import Agent, Crew, Process, Task
 
         researcher = Agent(
             role="Researcher",
@@ -84,7 +84,7 @@ class TestCrewAIIntegration:
         assert "at iteration" in msg
 
     def test_exception_message_identifies_agent(self):
-        from crewai import Agent, Task, Crew, Process
+        from crewai import Agent, Crew, Process, Task
 
         agent = Agent(
             role="LoopingAgent",
@@ -116,7 +116,7 @@ class TestCrewAIIntegration:
 
     def test_legitimate_pipeline_completes(self):
         """A non-looping 3-agent sequential pipeline should complete normally."""
-        from crewai import Agent, Task, Crew, Process
+        from crewai import Agent, Crew, Process, Task
 
         researcher = Agent(
             role="Researcher",

@@ -2,10 +2,11 @@ import pytest
 
 pytest.importorskip("langgraph")
 
-from langgraph.graph import StateGraph, MessagesState
-from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import AIMessage, ToolMessage
 from typing import Literal
+
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import MessagesState, StateGraph
 
 from tokencircuit import instrument_langgraph
 from tokencircuit.config import TokenCircuitConfig

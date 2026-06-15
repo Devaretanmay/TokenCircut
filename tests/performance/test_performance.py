@@ -8,14 +8,14 @@ All benchmarks measure:
 """
 
 import time
-import threading
+
 import pytest
 
-from tokencircuit.ring_buffer import RingBuffer
 from tokencircuit.detectors.composite import CompositeDetector
-from tokencircuit.detectors.state_stagnation import StateStagnationDetector
 from tokencircuit.detectors.futile_action import FutileActionDetector
+from tokencircuit.detectors.state_stagnation import StateStagnationDetector
 from tokencircuit.otel.hash_utils import compute_state_hash
+from tokencircuit.ring_buffer import RingBuffer
 from tokencircuit.telemetry import TelemetryEvent, emit_event_async
 
 

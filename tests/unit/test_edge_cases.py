@@ -1,16 +1,13 @@
 import datetime
 import enum
-import json
 import threading
 import uuid
 
 import pytest
 
-from tokencircuit.ring_buffer import RingBuffer
+from tokencircuit.detectors.composite import SIGNAL_STAGNATION, CompositeDetector
 from tokencircuit.otel.hash_utils import compute_state_hash
-from tokencircuit.detectors.composite import CompositeDetector, SIGNAL_STAGNATION
-from tokencircuit.detectors.state_stagnation import StateStagnationDetector
-from tokencircuit.detectors.futile_action import FutileActionDetector
+from tokencircuit.ring_buffer import RingBuffer
 
 
 def entry(state_hash="a", tool_sig="tool()", iteration=1):
@@ -144,7 +141,13 @@ class TestPureLLMReasoning:
         trigger futile action (different tool signatures)."""
         buf = RingBuffer(maxlen=5)
         det = CompositeDetector(threshold=5)
-        sigs = ["search(str)", "NO_TOOL_CALL", "search(str)", "NO_TOOL_CALL", "search(str)"]
+        sigs = [
+            "search(str)",
+            "NO_TOOL_CALL",
+            "search(str)",
+            "NO_TOOL_CALL",
+            "search(str)",
+        ]
         for i, s in enumerate(sigs):
             buf.push(entry(
                 state_hash=f"state_{i}",
@@ -217,8 +220,8 @@ class TestParallelAgents:
     def test_buffer_key_uniqueness(self):
         """Verify that buffers for different (agent_id, node_name)
         combinations are independent through the DetectionPipeline."""
-        from tokencircuit.detectors.pipeline import DetectionPipeline
         from tokencircuit.config import TokenCircuitConfig
+        from tokencircuit.detectors.pipeline import DetectionPipeline
 
         config = TokenCircuitConfig(max_repeats=5, window_size=5)
         pipeline = DetectionPipeline(config, "langgraph")

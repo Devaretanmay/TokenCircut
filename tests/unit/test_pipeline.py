@@ -1,7 +1,6 @@
-import pytest
 
-from tokencircuit.detectors.pipeline import DetectionPipeline
 from tokencircuit.config import TokenCircuitConfig
+from tokencircuit.detectors.pipeline import DetectionPipeline
 
 
 class TestDetectionPipeline:

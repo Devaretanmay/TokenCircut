@@ -10,3 +10,26 @@ dist/
 build/
 .coverage
 .coverage.*
+coverage.xml
+htmlcov/
+*,cover
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Control plane
+node_modules/
+.next/
+

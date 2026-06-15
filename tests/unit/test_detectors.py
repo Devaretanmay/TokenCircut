@@ -1,13 +1,13 @@
-from tokencircuit.ring_buffer import RingBuffer
 from tokencircuit.detectors.composite import (
-    CompositeDetector,
-    DetectionResult,
     SIGNAL_FUTILE,
     SIGNAL_STAGNATION,
+    CompositeDetector,
+    DetectionResult,
 )
-from tokencircuit.detectors.state_stagnation import StateStagnationDetector
 from tokencircuit.detectors.futile_action import FutileActionDetector
+from tokencircuit.detectors.state_stagnation import StateStagnationDetector
 from tokencircuit.exceptions import TokenCircuitError
+from tokencircuit.ring_buffer import RingBuffer
 
 
 def entry(state_hash="a", tool_sig="tool()", iteration=1):
@@ -305,7 +305,7 @@ def test_tool_signature_case_sensitivity():
         buf.push(
             entry(
                 state_hash=f"state_{i}",
-                tool_sig=f"Search(str)" if i < 3 else f"search(str)",
+                tool_sig="Search(str)" if i < 3 else "search(str)",
                 iteration=i,
             )
         )

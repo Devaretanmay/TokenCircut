@@ -1,14 +1,25 @@
 from tokencircuit import (
-    TokenCircuitConfig,
-    TokenCircuitClient,
-    load_config,
-    instrument_langgraph,
-    instrument_crewai,
-    TokenCircuitError,
-    StateStagnationError,
     FutileActionError,
+    StateStagnationError,
+    TokenCircuitClient,
+    TokenCircuitConfig,
+    TokenCircuitError,
+    instrument_langgraph,
+    load_config,
 )
-from tokencircuit.config import TokenCircuitConfig as Config
+
+
+class _MockCompletions:
+    def create(self, *args, **kwargs):
+        return None
+
+
+class _MockChat:
+    completions = _MockCompletions()
+
+
+class _MockClient:
+    chat = _MockChat()
 
 
 class TestExports:
@@ -25,13 +36,9 @@ class TestExports:
         assert issubclass(StateStagnationError, TokenCircuitError)
         assert issubclass(FutileActionError, TokenCircuitError)
 
-    def test_token_circuit_client_factory(self):
-        from tokencircuit.clients.openai import TokenCircuitClient as TC
-        assert callable(TC)
-
-    def test_token_circuit_client_wrapper(self):
-        from tokencircuit.clients.openai import TokenCircuitClient
-        assert callable(TokenCircuitClient)
+    def test_token_circuit_client_wrapper_called(self):
+        wrapped = TokenCircuitClient(_MockClient())
+        assert wrapped is not None
 
     def test_instrument_langgraph_importable(self):
         assert callable(instrument_langgraph)
