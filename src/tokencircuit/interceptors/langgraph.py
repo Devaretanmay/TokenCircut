@@ -110,7 +110,14 @@ class LangGraphInterceptor:
                     f"(est. {tokens_saved} tokens saved, ~${cost_saved:.4f})"
                 )
                 logger.warning(msg)
-                raise TokenCircuitError(msg)
+                raise TokenCircuitError(
+                    msg,
+                    signal_type=result.signal_type or "",
+                    node_name=result.node_name,
+                    iteration=result.iteration,
+                    state_hashes_window=result.state_hashes_window,
+                    tool_signatures_window=result.tool_signatures_window,
+                )
 
             yield step_output
 

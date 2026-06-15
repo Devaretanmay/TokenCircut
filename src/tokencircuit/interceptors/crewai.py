@@ -155,9 +155,23 @@ class CrewAIInterceptor:
             )
 
             if result.signal_type == SIGNAL_STAGNATION:
-                raise StateStagnationError(msg)
+                raise StateStagnationError(
+                    msg,
+                    signal_type=result.signal_type,
+                    node_name=result.node_name,
+                    iteration=result.iteration,
+                    state_hashes_window=result.state_hashes_window,
+                    tool_signatures_window=result.tool_signatures_window,
+                )
             elif result.signal_type == SIGNAL_FUTILE:
-                raise FutileActionError(msg)
+                raise FutileActionError(
+                    msg,
+                    signal_type=result.signal_type,
+                    node_name=result.node_name,
+                    iteration=result.iteration,
+                    state_hashes_window=result.state_hashes_window,
+                    tool_signatures_window=result.tool_signatures_window,
+                )
             else:
                 raise RuntimeError(msg)
 
