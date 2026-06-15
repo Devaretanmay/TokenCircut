@@ -1,3 +1,10 @@
-from .composite import CompositeDetector, DetectionResult
-from .futile_action import FutileActionDetector
-from .state_stagnation import StateStagnationDetector
+from .composite import (
+    CompositeDetector as CompositeDetector,
+)
+from .composite import (
+    DetectionResult as DetectionResult,
+)
+from .futile_action import FutileActionDetector as FutileActionDetector
+from .state_stagnation import (
+    StateStagnationDetector as StateStagnationDetector,
+)
