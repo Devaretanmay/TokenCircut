@@ -1,3 +1,5 @@
+"""Detection pipeline that records steps and triggers telemetry."""
+
 import logging
 from typing import Optional
 

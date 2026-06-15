@@ -1,3 +1,5 @@
+"""Telemetry events and cost estimation for TokenCircuit."""
+
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -5,6 +7,13 @@ from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger("tokencircuit")
+
+
+__all__ = [
+    "TelemetryEvent",
+    "compute_cost_estimate",
+    "emit_event_async",
+]
 
 MODEL_COST_PER_1K_TOKENS: dict[str, dict[str, float]] = {
     "gpt-4": {"input": 0.03, "output": 0.06},
@@ -88,7 +97,7 @@ def emit_event_async(
                 timeout=5.0,
             )
         except Exception:
-            pass
+            logger.warning("TokenCircuit: telemetry emit failed", exc_info=True)
 
     thread = threading.Thread(target=_send, daemon=True)
     thread.start()

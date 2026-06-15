@@ -1,3 +1,5 @@
+"""Detector for identical consecutive state hashes."""
+
 from ..ring_buffer import RingBuffer
 
 

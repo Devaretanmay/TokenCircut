@@ -1,3 +1,5 @@
+"""Fixed-size ring buffer for tracking iteration history."""
+
 from collections import deque
 from threading import Lock
 from typing import Any

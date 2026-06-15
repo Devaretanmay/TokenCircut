@@ -1,3 +1,5 @@
+"""Exception hierarchy for TokenCircuit."""
+
 from typing import Optional
 
 
@@ -25,3 +27,10 @@ class StateStagnationError(TokenCircuitError):
 
 class FutileActionError(TokenCircuitError):
     pass
+
+
+__all__ = [
+    "TokenCircuitError",
+    "StateStagnationError",
+    "FutileActionError",
+]

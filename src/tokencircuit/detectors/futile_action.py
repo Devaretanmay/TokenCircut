@@ -1,3 +1,5 @@
+"""Detector for repeated tool calls with no state change."""
+
 from ..ring_buffer import RingBuffer
 
 

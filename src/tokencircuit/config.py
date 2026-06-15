@@ -1,8 +1,16 @@
+"""Configuration loading and management for TokenCircuit."""
+
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
 logger = logging.getLogger("tokencircuit")
+
+
+__all__ = [
+    "TokenCircuitConfig",
+    "load_config",
+]
 
 SUPABASE_CONFIG_URL = (
     "https://tokencircuit.supabase.co/rest/v1/agency_configs"
@@ -52,9 +60,9 @@ def load_config(api_key: Optional[str] = None) -> TokenCircuitConfig:
             k: v for k, v in data.items()
             if k in TokenCircuitConfig.__dataclass_fields__
         })
-    except Exception as exc:
+    except Exception:
         logger.warning(
-            "TokenCircuit: config fetch failed (%s: %s), using defaults",
-            type(exc).__name__, exc,
+            "TokenCircuit: config fetch failed, using defaults",
+            exc_info=True,
         )
         return defaults

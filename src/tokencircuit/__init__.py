@@ -1,7 +1,6 @@
-from typing import Any
+"""TokenCircuit — LLM loop detection for agent frameworks."""
 
-__version__ = "0.1.0"
-VERSION = __version__
+from typing import Any
 
 from .config import TokenCircuitConfig, load_config
 from .exceptions import (
@@ -9,6 +8,8 @@ from .exceptions import (
     StateStagnationError,
     TokenCircuitError,
 )
+
+__version__ = "0.1.0"
 
 __all__ = [
     "TokenCircuitConfig",

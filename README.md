@@ -2,9 +2,8 @@
 
 [![PyPI](https://img.shields.io/pypi/v/tokencircuit)](https://pypi.org/project/tokencircuit/)
 [![Python](https://img.shields.io/pypi/pyversions/tokencircuit)](https://pypi.org/project/tokencircuit/)
-[![CI](https://github.com/your-org/tokencircuit/workflows/CI/badge.svg)](https://github.com/your-org/tokencircuit/actions)
-[![Coverage](https://img.shields.io/codecov/c/github/your-org/tokencircuit)](https://codecov.io/gh/your-org/tokencircuit)
-[![License](https://img.shields.io/github/license/your-org/tokencircuit)](LICENSE)
+[![CI](https://github.com/Devaretanmay/TokenCircut/actions/workflows/ci.yml/badge.svg)](https://github.com/Devaretanmay/TokenCircut/actions)
+[![License](https://img.shields.io/github/license/Devaretanmay/TokenCircut)](LICENSE)
 
 Detect and interrupt infinite loops in LLM agentic workflows. Supported frameworks: LangGraph, CrewAI, OpenAI.
 
@@ -87,13 +86,6 @@ config = TokenCircuitConfig(
 )
 ```
 
-Remote config via Supabase:
-
-```python
-from tokencircuit.config import load_config
-config = load_config(api_key="your-key")
-```
-
 ## Error handling
 
 ```python
@@ -107,10 +99,6 @@ except StateStagnationError:
 except FutileActionError:
     ...  # Agent calling same tool, no progress
 ```
-
-## Telemetry
-
-When configured with `agency_id`, `client_id`, and an API key, detection events (including estimated tokens/cost saved) are emitted to the control plane.
 
 ## Development
 

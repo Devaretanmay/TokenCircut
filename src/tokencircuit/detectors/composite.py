@@ -1,3 +1,5 @@
+"""Composite detection combining stagnation and futile-action signals."""
+
 from dataclasses import dataclass, field
 from typing import Optional
 

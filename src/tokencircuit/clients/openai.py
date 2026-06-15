@@ -1,3 +1,5 @@
+"""OpenAI client wrapper for monitoring chat completions."""
+
 import hashlib
 import json
 import logging

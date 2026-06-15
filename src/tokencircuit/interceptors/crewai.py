@@ -1,3 +1,5 @@
+"""CrewAI interceptor for monitoring agent loops via event bus."""
+
 import logging
 from typing import Any, Optional
 

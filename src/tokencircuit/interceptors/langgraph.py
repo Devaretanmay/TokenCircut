@@ -1,3 +1,5 @@
+"""LangGraph interceptor for monitoring agent stream steps."""
+
 import logging
 from typing import Any, AsyncIterator, Optional
 

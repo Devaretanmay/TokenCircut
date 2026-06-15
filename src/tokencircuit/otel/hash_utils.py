@@ -1,3 +1,5 @@
+"""Hashing utilities for state and action fingerprinting."""
+
 import hashlib
 import json
 from typing import Any, Optional
@@ -47,7 +49,7 @@ def extract_tool_type_signature(tool_call: Optional[dict[str, Any]]) -> str:
         d = _serializable(args)
     else:
         d = args if isinstance(args, dict) else {}
-    arg_types = ",".join(type(v).__name__ for v in d.values())
+    arg_types = ",".join(v.__class__.__name__ for v in d.values())
     return f"{name}({arg_types})"
 
 
