@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Report security vulnerabilities to [security@tokencircuit.dev](mailto:security@tokencircuit.dev).
+Report security vulnerabilities to the admin.
 
 Do not file public GitHub issues for security vulnerabilities.
 
