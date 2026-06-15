@@ -10,6 +10,7 @@ from .exceptions import (
 __all__ = [
     "TokenCircuitConfig",
     "load_config",
+    "TokenCircuitClient",
     "instrument_langgraph",
     "instrument_crewai",
     "TokenCircuitError",
@@ -26,3 +27,8 @@ def instrument_langgraph(graph: Any, api_key: str | None = None, config: TokenCi
 def instrument_crewai(crew: Any, api_key: str | None = None, config: TokenCircuitConfig | None = None) -> Any:
     from .interceptors.crewai import CrewAIInterceptor
     return CrewAIInterceptor(crew, config=config, api_key=api_key).apply(crew)
+
+
+def TokenCircuitClient(client: Any, api_key: str | None = None, config: TokenCircuitConfig | None = None) -> Any:
+    from .clients.openai import TokenCircuitClient as _TokenCircuitClient
+    return _TokenCircuitClient(client, config=config, api_key=api_key)
