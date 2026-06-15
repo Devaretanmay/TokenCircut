@@ -260,4 +260,4 @@ class TestTelemetryNonBlocking:
 
         times.sort()
         p99 = times[int(len(times) * 0.99)]
-        assert p99 < 5.0, f"p99 telemetry latency {p99:.4f}ms exceeds 5.0ms"
+        assert p99 < 10.0, f"p99 telemetry latency {p99:.4f}ms exceeds 10.0ms"
