@@ -1,14 +1,3 @@
-"""
-Edge case tests for TokenCircuit V6.0.
-
-Covers:
-- Non-JSON-serializable state values (datetime, UUID, Enum, bytes, numpy)
-- Pure LLM reasoning steps with no tool calls
-- Graceful degradation when CrewAI/LangGraph APIs change
-- Parallel agent execution with same node name
-- Buffer key collision safety
-"""
-
 import datetime
 import enum
 import json

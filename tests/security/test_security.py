@@ -22,9 +22,6 @@ def make_entry(state_hash="a", tool_sig="tool()", iteration=1):
     }
 
 
-# ── PII Leak Test ──
-
-
 class TestPIILeak:
     def test_tool_signature_contains_no_values(self):
         tool_call = {
@@ -72,9 +69,6 @@ class TestPIILeak:
         assert sig == "search(str)"
 
 
-# ── State Hash Collision Resistance ──
-
-
 class TestStateHashCollision:
     def test_different_states_different_hashes(self):
         hashes = set()
@@ -115,9 +109,6 @@ class TestStateHashCollision:
         assert compute_state_hash(s1) == compute_state_hash(s2)
 
 
-# ── Config Fallback Under Attack ──
-
-
 class TestConfigFallback:
     def test_http_500_returns_defaults(self):
         cfg = load_config(api_key="fake-key-that-will-fail")
@@ -149,9 +140,6 @@ class TestConfigFallback:
                 assert isinstance(cfg, TokenCircuitConfig)
             except Exception:
                 pytest.fail(f"load_config raised for key={key!r}")
-
-
-# ── Thread Safety ──
 
 
 class TestThreadSafety:
