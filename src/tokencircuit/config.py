@@ -15,11 +15,7 @@ class TokenCircuitConfig:
     window_size: int = 5
     agency_id: Optional[str] = None
     client_id: Optional[str] = None
-    webhook_url: Optional[str] = None
-    supabase_url: Optional[str] = None
-    supabase_anon_key: Optional[str] = None
     model_name: str = "unknown"
-    avg_tokens_per_call: int = 1024
     telemetry_enabled: bool = field(default=True)
 
     def __post_init__(self) -> None:
