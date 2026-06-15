@@ -216,26 +216,40 @@ class TestParallelAgents:
 
     def test_buffer_key_uniqueness(self):
         """Verify that buffers for different (agent_id, node_name)
-        combinations are distinct."""
-        from tokencircuit.interceptors.langgraph import LangGraphInterceptor
+        combinations are independent through the DetectionPipeline."""
+        from tokencircuit.detectors.pipeline import DetectionPipeline
         from tokencircuit.config import TokenCircuitConfig
 
         config = TokenCircuitConfig(max_repeats=5, window_size=5)
-        interceptor = LangGraphInterceptor.__new__(LangGraphInterceptor)
-        interceptor._config = config
-        interceptor._buffers = {}
-        interceptor._iteration = {}
+        pipeline = DetectionPipeline(config, "langgraph")
 
-        buf_a = interceptor._get_buffer("agent_a", "node_x")
-        buf_b = interceptor._get_buffer("agent_b", "node_x")
-        buf_c = interceptor._get_buffer("agent_a", "node_y")
+        # agent_a gets 4 pushes — buffer not full yet
+        for _ in range(4):
+            assert pipeline.record_step(
+                "agent_a", "node_x", "hash1", "tool()"
+            ) is None
 
-        assert buf_a is not buf_b
-        assert buf_a is not buf_c
-        assert buf_b is not buf_c
+        # agent_b gets 1 push — also not full
+        assert pipeline.record_step(
+            "agent_b", "node_x", "hash1", "tool()"
+        ) is None
 
-        buf_a_again = interceptor._get_buffer("agent_a", "node_x")
-        assert buf_a is buf_a_again
+        # agent_a's 5th push fills buffer → detection fires
+        r_a = pipeline.record_step("agent_a", "node_x", "hash1", "tool()")
+        assert r_a is not None
+
+        # agent_b still only has 1 push → not full → no detection
+        assert pipeline.record_step(
+            "agent_b", "node_x", "hash1", "tool()"
+        ) is None
+
+        # agent_b needs 3 more to fill (2 already recorded)
+        for _ in range(2):
+            assert pipeline.record_step(
+                "agent_b", "node_x", "hash1", "tool()"
+            ) is None
+        r_b = pipeline.record_step("agent_b", "node_x", "hash1", "tool()")
+        assert r_b is not None
 
 
 # ── Buffer full edge cases ──
