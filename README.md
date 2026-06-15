@@ -38,6 +38,8 @@ pip install tokencircuit
 pip install "tokencircuit[langgraph]"   # LangGraph support
 ```
 
+Requires Python >= 3.11.
+
 ## Configuration
 
 ```python
