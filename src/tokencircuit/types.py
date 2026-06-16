@@ -174,37 +174,20 @@ class InterventionDecision(BaseModel):
 # =============================================================================
 
 
+from dataclasses import dataclass, field
+
+@dataclass(slots=True)
 class CanonicalMessage:
     """
-    Normalized message representation. Intentionally a plain class (not Pydantic)
-    because it lives in the hot path of every pre_model_hook invocation.
+    Normalized message representation. Using dataclass with slots for performance
+    in the hot path of every pre_model_hook invocation.
     """
-
-    __slots__ = (
-        "role",
-        "content",
-        "tool_calls",
-        "tool_call_id",
-        "source_index",
-        "name",
-    )
-
-    def __init__(
-        self,
-        *,
-        role: CanonicalRole,
-        content: str = "",
-        tool_calls: Optional[list[dict[str, Any]]] = None,
-        tool_call_id: Optional[str] = None,
-        source_index: int = -1,
-        name: Optional[str] = None,
-    ) -> None:
-        self.role = role
-        self.content = content
-        self.tool_calls = tool_calls or []
-        self.tool_call_id = tool_call_id
-        self.source_index = source_index
-        self.name = name
+    role: CanonicalRole
+    content: str = ""
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_call_id: Optional[str] = None
+    source_index: int = -1
+    name: Optional[str] = None
 
     def __repr__(self) -> str:
         parts = [f"role={self.role.value}"]
