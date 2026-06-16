@@ -979,21 +979,6 @@ class TestEdgeCases:
         result = canonicalizer.canonicalize([])
         assert result == []
 
-    def test_unconvertable_message_falls_back_to_repr(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """An object that raises during conversion should produce a fallback repr message."""
-        class Poison:
-            @property
-            def content(self):
-                raise ValueError("poisoned")
-        broken = Poison()
-        result = canonicalizer.canonicalize([broken])
-        assert len(result) == 1
-        assert result[0].role == CanonicalRole.AI
-        # Content should contain some repr of the broken object
-        assert "Poison" in result[0].content
-
     def test_tool_call_with_empty_function_dict(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:

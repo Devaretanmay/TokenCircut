@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import enum
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -119,8 +120,8 @@ class SemanticFingerprint(BaseModel):
     content_hash: str
     tool_signature: str
     structural_pattern: str
-    bigram_set: frozenset[Any] = Field(default_factory=frozenset)
-    trigram_set: frozenset[Any] = Field(default_factory=frozenset)
+    bigram_set: frozenset[str] = Field(default_factory=frozenset)
+    trigram_set: frozenset[str] = Field(default_factory=frozenset)
 
 
 class InterventionContext(BaseModel):
@@ -132,17 +133,14 @@ class InterventionContext(BaseModel):
     node_name: str
     turn_number: int
 
-    # Detection
     active_signals: list[SignalType] = Field(default_factory=list)
     semantic_similarity_score: float = 0.0
 
-    # Transactions
     orphaned_transaction_ids: list[str] = Field(default_factory=list)
     dropped_this_turn: list[str] = Field(default_factory=list)
     consecutive_empty_results: int = 0
     consecutive_errors: int = 0
 
-    # Intervention history
     current_stage: InterventionStage = InterventionStage.PASS
     consecutive_stagnation_count: int = 0
     total_interventions: int = 0
@@ -173,8 +171,6 @@ class InterventionDecision(BaseModel):
 # Canonical Message (lightweight, not Pydantic for performance in hot path)
 # =============================================================================
 
-
-from dataclasses import dataclass, field
 
 @dataclass(slots=True)
 class CanonicalMessage:

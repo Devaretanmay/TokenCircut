@@ -1,4 +1,6 @@
-"""ToolTransactionLedger — tracks tool call/result lifecycle as immutable transactions."""
+"""
+ToolTransactionLedger — tracks tool call/result lifecycle as transactions.
+"""
 
 from __future__ import annotations
 
@@ -24,7 +26,9 @@ _ERROR_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^\s*(?:error|exception|fail(?:ed|ure)|traceback)[\s:]", re.IGNORECASE),
     # Match common JSON error structures
     re.compile(r"\"error\"\s*:\s*(?:\"[^\"]+\"|{)", re.IGNORECASE),
-    re.compile(r"\"message\"\s*:\s*\"[^\"]*(?:error|fail|exception)[^\"]*\"", re.IGNORECASE),
+    re.compile(
+        r"\"message\"\s*:\s*\"[^\"]*(?:error|fail|exception)[^\"]*\"", re.IGNORECASE
+    ),
     re.compile(r"(?i)\b(4\d{2}|5\d{2})\b.*\b(status|code|error)\b"),
 )
 
@@ -244,18 +248,27 @@ class ToolTransactionLedger:
 
     def get_pending(self) -> list[ToolTransaction]:
         """Return all PENDING transactions."""
-        return [t for t in self._transactions.values() if t.status == TransactionStatus.PENDING]
+        return [
+            t
+            for t in self._transactions.values()
+            if t.status == TransactionStatus.PENDING
+        ]
 
     def get_orphaned(self) -> list[ToolTransaction]:
         """Return all ORPHANED transactions."""
-        return [t for t in self._transactions.values() if t.status == TransactionStatus.ORPHANED]
+        return [
+            t
+            for t in self._transactions.values()
+            if t.status == TransactionStatus.ORPHANED
+        ]
 
     def get_committed_since(self, turn: int) -> list[ToolTransaction]:
         """Return transactions committed at or after the given turn."""
         return [
             t
             for t in self._transactions.values()
-            if t.status == TransactionStatus.COMMITTED and (t.committed_at_turn or 0) >= turn
+            if t.status == TransactionStatus.COMMITTED
+            and (t.committed_at_turn or 0) >= turn
         ]
 
     def get_transaction(self, call_id: str) -> Optional[ToolTransaction]:
@@ -276,7 +289,9 @@ class ToolTransactionLedger:
     def current_turn(self) -> int:
         return self._current_turn
 
-    def get_consecutive_outcomes(self, outcome: TransactionOutcome, *, limit: int = 10) -> int:
+    def get_consecutive_outcomes(
+        self, outcome: TransactionOutcome, *, limit: int = 10
+    ) -> int:
         """
         Count consecutive most-recent committed transactions with the given outcome.
         Used by InterventionEngine to detect repeated failures.

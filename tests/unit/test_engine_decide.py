@@ -804,46 +804,6 @@ class TestToolCallsSignature:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-class TestProcessFailSafe:
-    """Engine.process() must always return PASS on internal exceptions."""
-
-    def test_process_returns_pass_on_exception(self):
-        """If _process_impl raises, process() swallows and returns PASS."""
-        engine = InterventionEngine()
-        # Patch _process_impl to raise an exception
-        engine._process_impl = MagicMock(side_effect=RuntimeError("boom"))
-
-        # Also patch _get_tracer to return None so we use the non-tracing path
-        with patch("tokencircuit.engine._get_tracer", return_value=None):
-            decision = engine.process(
-                messages=[], state={}, thread_id="t1", node_name="n1"
-            )
-
-        assert decision.stage == InterventionStage.PASS
-        assert decision.signals == []
-        assert decision.state_patch == {}
-
-    def test_process_returns_pass_on_exception_with_tracer(self):
-        """If _process_impl raises while tracing is active, still returns PASS."""
-        engine = InterventionEngine()
-        engine._process_impl = MagicMock(side_effect=ValueError("bad data"))
-
-        # Create a mock tracer with a context manager span
-        mock_span = MagicMock()
-        mock_span.__enter__ = MagicMock(return_value=mock_span)
-        mock_span.__exit__ = MagicMock(return_value=False)
-
-        mock_tracer = MagicMock()
-        mock_tracer.start_as_current_span.return_value = mock_span
-
-        with patch("tokencircuit.engine._get_tracer", return_value=mock_tracer):
-            decision = engine.process(
-                messages=[], state={}, thread_id="t1", node_name="n1"
-            )
-
-        assert decision.stage == InterventionStage.PASS
-        assert decision.signals == []
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 16. Full escalation ladder walk-through

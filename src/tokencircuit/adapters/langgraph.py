@@ -155,7 +155,8 @@ class LangGraphPreModelAdapter:
         if self._config.audit_mode:
             if decision.stage > InterventionStage.PASS:
                 logger.info(
-                    "TokenCircuit AUDIT: node='%s', would have triggered %s. Signals: %s",
+                    "TokenCircuit AUDIT: node='%s', would have triggered %s. "
+                    "Signals: %s",
                     state.get("_tc_node_name", "?"),
                     decision.stage.name,
                     [s.value for s in decision.signals],

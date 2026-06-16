@@ -5,6 +5,7 @@ import importlib.metadata
 from .adapters.langgraph import LangGraphPreModelAdapter
 from .canonicalizer import MessageCanonicalizer
 from .engine import InterventionConfig, InterventionEngine, TokenCircuitError
+from .instrumentation import instrument_crewai, instrument_langgraph
 from .ledger import ToolTransactionLedger
 from .semantic_detector import SemanticStagnationDetector
 from .state_schema import (
@@ -12,14 +13,6 @@ from .state_schema import (
     default_intervention_state,
     tc_state_reducer,
 )
-from .types import (
-    CanonicalRole,
-    InterventionStage,
-    SignalType,
-    TransactionOutcome,
-    TransactionStatus,
-)
-from .validator import TranscriptValidator
 
 try:
     __version__ = importlib.metadata.version("tokencircuit")
@@ -43,4 +36,7 @@ __all__ = [
     "InterventionEngine",
     "InterventionConfig",
     "TokenCircuitError",
+    "instrument_langgraph",
+    "instrument_crewai",
+    "LangGraphPreModelAdapter",
 ]

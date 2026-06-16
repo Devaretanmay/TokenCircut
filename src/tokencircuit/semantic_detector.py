@@ -1,5 +1,5 @@
 """
-SemanticStagnationDetector — zero-dependency semantic loop detection via token n-gram shingling.
+SemanticStagnationDetector — zero-dependency semantic loop detection via shingling.
 
 Uses tiktoken (cl100k_base) to tokenize, then computes Jaccard similarity over
 2-gram and 3-gram shingle sets of normalized assistant text to detect paraphrased
@@ -42,6 +42,7 @@ def _get_encoder() -> object:
     global _encoder
     if _encoder is None:
         import tiktoken
+
         _encoder = tiktoken.get_encoding("cl100k_base")
     return _encoder
 
@@ -57,9 +58,7 @@ def _compute_shingles(token_ids: list[int], n: int) -> frozenset[tuple[int, ...]
         return frozenset(zip(token_ids, token_ids[1:], token_ids[2:]))
 
     # Generic case for n > 3
-    return frozenset(
-        tuple(token_ids[i : i + n]) for i in range(len(token_ids) - n + 1)
-    )
+    return frozenset(tuple(token_ids[i : i + n]) for i in range(len(token_ids) - n + 1))
 
 
 def _jaccard_similarity(a: frozenset[Any], b: frozenset[Any]) -> float:
@@ -256,7 +255,8 @@ class SemanticStagnationDetector:
 
         # ----- Structural pattern check -----
         pattern_matches = sum(
-            1 for fp in self._window
+            1
+            for fp in self._window
             if fp.structural_pattern == fingerprint.structural_pattern
         )
         unique_patterns = len(set(fp.structural_pattern for fp in self._window))
@@ -265,7 +265,8 @@ class SemanticStagnationDetector:
         if pattern_matches >= self._structural_threshold:
             # Same structure repeated — check if tool signature also repeats
             sig_matches = sum(
-                1 for fp in self._window
+                1
+                for fp in self._window
                 if fp.tool_signature == fingerprint.tool_signature
                 and fp.tool_signature != "NO_TOOL_CALL"
             )
@@ -301,7 +302,9 @@ class SemanticStagnationDetector:
 
     def _compute_window_similarity(self, fingerprint: SemanticFingerprint) -> float:
         """Compute weighted average Jaccard similarity against the window."""
-        if not self._window or (not fingerprint.bigram_set and not fingerprint.trigram_set):
+        if not self._window or (
+            not fingerprint.bigram_set and not fingerprint.trigram_set
+        ):
             return 0.0
 
         total_sim = 0.0
@@ -337,7 +340,9 @@ class SemanticStagnationDetector:
             if msg.role == CanonicalRole.AI:
                 ai_content = msg.content
                 if msg.tool_calls:
-                    sorted_calls = sorted(msg.tool_calls, key=lambda x: x.get("name", "?"))
+                    sorted_calls = sorted(
+                        msg.tool_calls, key=lambda x: x.get("name", "?")
+                    )
                     names = [tc.get("name", "?") for tc in sorted_calls]
                     arg_types = []
                     for tc in sorted_calls:

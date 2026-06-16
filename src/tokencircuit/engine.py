@@ -36,7 +36,7 @@ from .types import (
     SignalType,
     TransactionOutcome,
 )
-from .validator import TranscriptValidator, ValidationResult
+from .validator import TranscriptValidator
 
 logger = logging.getLogger("tokencircuit.engine")
 
@@ -164,7 +164,6 @@ class InterventionEngine:
         thread_id: str,
         node_name: str,
     ) -> InterventionDecision:
-        """Main entry point. Runs the full V7 pipeline synchronously."""
         tracer = _get_tracer()
         ctx_manager = (
             tracer.start_as_current_span(
@@ -177,25 +176,16 @@ class InterventionEngine:
             ) if tracer else nullcontext()
         )
         with ctx_manager as span:
-            try:
-                decision = self._process_impl(messages, state, thread_id=thread_id, node_name=node_name)
+            decision = self._process_impl(
+                messages, state, thread_id=thread_id, node_name=node_name
+            )
 
-                if decision.stage > InterventionStage.PASS and span:
-                    span.set_attribute("intervention.stage", decision.stage.name)
-                    for sig in decision.signals:
-                        span.add_event("SignalDetected", {"signal.type": sig.value})
+            if decision.stage > InterventionStage.PASS and span:
+                span.set_attribute("intervention.stage", decision.stage.name)
+                for sig in decision.signals:
+                    span.add_event("SignalDetected", {"signal.type": sig.value})
 
-                return decision
-            except Exception as exc:
-                if span:
-                    try:
-                        span.record_exception(exc)
-                    except Exception:
-                        pass
-                logger.error(
-                    "InterventionEngine.process() failed, returning PASS: %s", exc, exc_info=True
-                )
-                return InterventionDecision(stage=InterventionStage.PASS, signals=[], state_patch={})
+            return decision
 
     def _process_impl(
         self,
@@ -205,87 +195,47 @@ class InterventionEngine:
         thread_id: str,
         node_name: str,
     ) -> InterventionDecision:
-        """Internal implementation (can raise)."""
         ts = self._get_state(thread_id, node_name)
-
-        # ─── Step 1: Extract intervention state ───
         tc_state: InterventionStateSchema = state.get(
             "_tc_intervention", default_intervention_state()
         )
         turn_number = tc_state.get("turn_counter", 0) + 1
 
-        # ─── Step 2: Canonicalize messages ───
         canonical = ts.canonicalizer.canonicalize(list(messages))
 
-        # ─── Step 3: Validate transcript ───
-        validation_result: Optional[ValidationResult] = None
-        validation_signals: list[SignalType] = []
-        dropped_this_turn: list[str] = []
-
+        validation_signals, dropped_this_turn = [], []
         if self._config.enable_transcript_validation:
             validator = TranscriptValidator(
                 ledger=ts.ledger,
                 auto_repair=self._config.auto_repair,
                 max_orphan_tolerance=self._config.max_orphan_tolerance,
             )
-            validation_result = validator.validate(canonical, turn_number)
-            canonical = validation_result.validated_messages
-            validation_signals = validation_result.signals
-            dropped_this_turn = validation_result.dropped_call_ids
+            res = validator.validate(canonical, turn_number)
+            canonical, validation_signals, dropped_this_turn = (
+                res.validated_messages,
+                res.signals,
+                res.dropped_call_ids,
+            )
 
-        # ─── Step 4: Semantic stagnation detection ───
-        analysis: Optional[StagnationAnalysis] = None
-        stagnation_signals: list[SignalType] = []
-        similarity_score = 0.0
-
-        if ts.detector is not None:
-            # OPTIMIZATION: Only hydrate from history if our in-memory window is empty.
-            # This happens after process restarts or on the very first turn.
-            if len(ts.detector._window) == 0:
+        stagnation_signals, similarity_score = [], 0.0
+        if ts.detector:
+            if not ts.detector._window:
                 ts.detector.hydrate_from_history(canonical)
-
             analysis = ts.detector.analyze(canonical, turn_number)
-            stagnation_signals = analysis.signals
-            similarity_score = analysis.similarity_score
-
-            # Record fingerprint for next turn's comparison
+            stagnation_signals, similarity_score = (
+                analysis.signals,
+                analysis.similarity_score,
+            )
             ts.detector.record_fingerprint(analysis.fingerprint)
             ts.last_analysis = analysis
 
-        # ─── Step 4.5: Runaway Generation Detection ───
-        runaway_signals: list[SignalType] = []
-        if self._config.max_tokens_per_turn > 0 and canonical:
-            # Check the last message if it's from the AI
-            last_msg = canonical[-1]
-            if last_msg.role == CanonicalRole.AI and last_msg.content:
-                # Simple estimation: 1 token ≈ 4 characters
-                estimated_tokens = len(last_msg.content) // 4
-                if estimated_tokens > self._config.max_tokens_per_turn:
-                    logger.warning(
-                        "TokenCircuit: RUNAWAY GENERATION detected. "
-                        "Estimated %d tokens exceeds limit of %d.",
-                        estimated_tokens,
-                        self._config.max_tokens_per_turn,
-                    )
-                    runaway_signals.append(SignalType.RUNAWAY_GENERATION)
+        runaway_signals = self._detect_runaway(canonical)
+        all_signals = list(
+            set(validation_signals + stagnation_signals + runaway_signals)
+        )
 
-        # ─── Step 5: Merge all signals ───
-        all_signals = list(set(validation_signals + stagnation_signals + runaway_signals))
-
-        # ─── Step 6: Compute transaction health metrics ───
-        consecutive_empty = ts.ledger.get_consecutive_outcomes(TransactionOutcome.EMPTY)
-        consecutive_errors = ts.ledger.get_consecutive_outcomes(
-            TransactionOutcome.TRANSIENT_ERROR
-        ) + ts.ledger.get_consecutive_outcomes(TransactionOutcome.PERMANENT_ERROR)
-
-        # ─── Step 7: Build InterventionContext ───
-        # Track consecutive stagnation from prior state
         prior_stagnation = tc_state.get("consecutive_stagnation_count", 0)
-        if all_signals:
-            consecutive_stagnation = prior_stagnation + 1
-        else:
-            consecutive_stagnation = 0
-
+        consecutive_stagnation = prior_stagnation + 1 if all_signals else 0
         current_stage = InterventionStage(
             _stage_str_to_int(tc_state.get("current_stage", "pass"))
         )
@@ -299,8 +249,13 @@ class InterventionEngine:
             semantic_similarity_score=similarity_score,
             orphaned_transaction_ids=[t.call.call_id for t in ts.ledger.get_orphaned()],
             dropped_this_turn=dropped_this_turn,
-            consecutive_empty_results=consecutive_empty,
-            consecutive_errors=consecutive_errors,
+            consecutive_empty_results=ts.ledger.get_consecutive_outcomes(
+                TransactionOutcome.EMPTY
+            ),
+            consecutive_errors=ts.ledger.get_consecutive_outcomes(
+                TransactionOutcome.TRANSIENT_ERROR
+            )
+            + ts.ledger.get_consecutive_outcomes(TransactionOutcome.PERMANENT_ERROR),
             current_stage=current_stage,
             consecutive_stagnation_count=consecutive_stagnation,
             total_interventions=tc_state.get("total_interventions", 0),
@@ -308,180 +263,134 @@ class InterventionEngine:
             strategies_attempted=tc_state.get("strategies_attempted", []),
         )
 
-        # ─── Step 8: Decide ───
-        decision = self.decide(context, canonical)
+        return self.decide(context, canonical)
 
-        return decision
+    def _detect_runaway(self, canonical: list[CanonicalMessage]) -> list[SignalType]:
+        if self._config.max_tokens_per_turn > 0 and canonical:
+            last_msg = canonical[-1]
+            if last_msg.role == CanonicalRole.AI and last_msg.content:
+                if len(last_msg.content) // 4 > self._config.max_tokens_per_turn:
+                    return [SignalType.RUNAWAY_GENERATION]
+        return []
 
     def decide(
         self,
         context: InterventionContext,
         canonical_messages: Optional[list[CanonicalMessage]] = None,
     ) -> InterventionDecision:
-        """
-        Pure decision function. Given context, produce intervention decision.
-
-        State Machine:
-        - If cooldown > 0: PASS (cooling down, no matter what).
-        - If no signals: de-escalate → PASS.
-        - If signals:
-          count < nudge_threshold → PASS (building evidence)
-          nudge_threshold ≤ count < override_threshold → NUDGE
-          override_threshold ≤ count < hard_stop_threshold → OVERRIDE
-          count ≥ hard_stop_threshold → HARD_STOP
-        """
-        cfg = self._config
-
-        # ─── Cooldown gate ───
         if context.cooldown_remaining > 0:
             return InterventionDecision(
                 stage=InterventionStage.PASS,
                 signals=context.active_signals,
                 state_patch=self._build_state_patch(
-                    context, InterventionStage.PASS, coaching=None
+                    context, InterventionStage.PASS, None
                 ),
             )
 
-        # ─── No signals → de-escalate ───
         if not context.active_signals:
-            patch = self._build_state_patch(context, InterventionStage.PASS, coaching=None)
-            # Apply cooldown if we're de-escalating from non-PASS
+            patch = self._build_state_patch(context, InterventionStage.PASS, None)
             if context.current_stage > InterventionStage.PASS:
-                patch["cooldown_remaining"] = cfg.cooldown_turns
-                patch["last_deescalation_turn"] = context.turn_number
+                patch.update(
+                    {
+                        "cooldown_remaining": self._config.cooldown_turns,
+                        "last_deescalation_turn": context.turn_number,
+                    }
+                )
             return InterventionDecision(
-                stage=InterventionStage.PASS,
-                signals=[],
-                state_patch=patch,
+                stage=InterventionStage.PASS, signals=[], state_patch=patch
             )
 
-        # ─── Determine target stage based on consecutive count or explicit signals ───
-        count = context.consecutive_stagnation_count
+        target_stage = self._get_target_stage(context)
+        max_allowed = InterventionStage(
+            min(context.current_stage + 1, InterventionStage.HARD_STOP)
+        )
+        is_runaway = SignalType.RUNAWAY_GENERATION in context.active_signals
+        effective_stage = (
+            target_stage
+            if target_stage == InterventionStage.HARD_STOP and is_runaway
+            else InterventionStage(min(target_stage, max_allowed))
+        )
 
-        if SignalType.RUNAWAY_GENERATION in context.active_signals:
-            target_stage = InterventionStage.HARD_STOP
-        elif count >= cfg.hard_stop_threshold:
-            target_stage = InterventionStage.HARD_STOP
-        elif count >= cfg.override_threshold:
-            target_stage = InterventionStage.OVERRIDE
-        elif count >= cfg.nudge_threshold:
-            target_stage = InterventionStage.NUDGE
-        else:
-            target_stage = InterventionStage.PASS
-
-        # ─── Monotonic escalation: can only go up by one level per turn ───
-        # Exception: Runaway Generation skips the ladder and hard stops immediately.
-        if target_stage == InterventionStage.HARD_STOP and SignalType.RUNAWAY_GENERATION in context.active_signals:
-            effective_stage = InterventionStage.HARD_STOP
-        else:
-            max_allowed = InterventionStage(min(context.current_stage + 1, InterventionStage.HARD_STOP))
-            effective_stage = InterventionStage(min(target_stage, max_allowed))
-
-        # ─── Build decision based on effective stage ───
         if effective_stage == InterventionStage.PASS:
             return InterventionDecision(
                 stage=InterventionStage.PASS,
                 signals=context.active_signals,
-                state_patch=self._build_state_patch(context, InterventionStage.PASS, coaching=None),
+                state_patch=self._build_state_patch(
+                    context, InterventionStage.PASS, None
+                ),
             )
 
-        elif effective_stage == InterventionStage.NUDGE:
-            coaching = self._generate_nudge(context)
-            llm_messages = self._build_nudge_messages(canonical_messages, coaching)
-            return InterventionDecision(
-                stage=InterventionStage.NUDGE,
-                signals=context.active_signals,
-                llm_input_messages=llm_messages,
-                coaching_message=coaching,
-                state_patch=self._build_state_patch(context, InterventionStage.NUDGE, coaching),
-                estimated_tokens_saved=self._estimate_savings(context),
-            )
-
-        elif effective_stage == InterventionStage.OVERRIDE:
-            coaching = self._generate_override(context)
-            llm_messages = self._build_override_messages(canonical_messages, coaching, context)
-            return InterventionDecision(
-                stage=InterventionStage.OVERRIDE,
-                signals=context.active_signals,
-                llm_input_messages=llm_messages,
-                coaching_message=coaching,
-                state_patch=self._build_state_patch(context, InterventionStage.OVERRIDE, coaching),
-                estimated_tokens_saved=self._estimate_savings(context),
-            )
-
-        else:  # HARD_STOP
-            reason = self._generate_hard_stop_reason(context)
-            return InterventionDecision(
-                stage=InterventionStage.HARD_STOP,
-                signals=context.active_signals,
-                should_terminate=True,
-                termination_reason=reason,
-                coaching_message=reason,
-                state_patch=self._build_state_patch(context, InterventionStage.HARD_STOP, reason),
-                estimated_tokens_saved=self._estimate_savings(context),
-            )
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Coaching message generation
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _generate_nudge(self, context: InterventionContext) -> str:
-        """Generate a coaching message for NUDGE stage."""
-        outcome_summary = self._summarize_outcomes(context)
-        suggestion = self._suggest_alternative(context)
-
-        return self._config.nudge_template.format(
-            n_turns=context.consecutive_stagnation_count,
-            outcome_summary=outcome_summary,
-            suggestion=suggestion,
+        coaching = self._generate_coaching(effective_stage, context)
+        llm_messages = self._build_intervention_messages(
+            effective_stage, canonical_messages, coaching, context
         )
 
-    def _generate_override(self, context: InterventionContext) -> str:
-        """Generate a forceful directive for OVERRIDE stage."""
-        error_summary = self._summarize_errors(context)
-        directive = self._generate_directive(context)
-
-        return self._config.override_template.format(
-            n_turns=context.consecutive_stagnation_count,
-            error_summary=error_summary,
-            directive=directive,
+        return InterventionDecision(
+            stage=effective_stage,
+            signals=context.active_signals,
+            llm_input_messages=llm_messages,
+            coaching_message=coaching,
+            should_terminate=effective_stage == InterventionStage.HARD_STOP,
+            termination_reason=coaching
+            if effective_stage == InterventionStage.HARD_STOP
+            else None,
+            state_patch=self._build_state_patch(context, effective_stage, coaching),
+            estimated_tokens_saved=self._estimate_savings(context),
         )
 
-    def _generate_hard_stop_reason(self, context: InterventionContext) -> str:
-        """Generate termination reason."""
+    def _get_target_stage(self, context: InterventionContext) -> InterventionStage:
+        is_runaway = SignalType.RUNAWAY_GENERATION in context.active_signals
+        is_hard_stop = (
+            context.consecutive_stagnation_count >= self._config.hard_stop_threshold
+        )
+        if is_runaway or is_hard_stop:
+            return InterventionStage.HARD_STOP
+        if context.consecutive_stagnation_count >= self._config.override_threshold:
+            return InterventionStage.OVERRIDE
+        if context.consecutive_stagnation_count >= self._config.nudge_threshold:
+            return InterventionStage.NUDGE
+        return InterventionStage.PASS
+
+    def _generate_coaching(
+        self, stage: InterventionStage, context: InterventionContext
+    ) -> str:
+        if stage == InterventionStage.NUDGE:
+            return self._config.nudge_template.format(
+                n_turns=context.consecutive_stagnation_count,
+                outcome_summary=self._summarize_outcomes(context),
+                suggestion=self._suggest_alternative(context),
+            )
+        if stage == InterventionStage.OVERRIDE:
+            return self._config.override_template.format(
+                n_turns=context.consecutive_stagnation_count,
+                error_summary=self._summarize_errors(context),
+                directive=self._generate_directive(context),
+            )
         return (
-            f"TokenCircuit HARD_STOP: Agent has been stagnating for "
-            f"{context.consecutive_stagnation_count} consecutive turns in node "
+            f"TokenCircuit HARD_STOP: Stagnation for "
+            f"{context.consecutive_stagnation_count} turns in "
             f"'{context.node_name}'. Signals: "
-            f"{[s.value for s in context.active_signals]}. "
-            f"Total interventions attempted: {context.total_interventions}."
+            f"{[s.value for s in context.active_signals]}."
         )
+
+    def _build_intervention_messages(self, stage, canonical, coaching, context):
+        if canonical is None:
+            return [{"role": "system", "content": coaching}]
+        if stage == InterventionStage.NUDGE:
+            res = MessageCanonicalizer.to_openai_format(canonical)
+            res.append({"role": "system", "content": coaching})
+            return res
+        if stage == InterventionStage.OVERRIDE:
+            return self._build_override_messages(canonical, coaching, context)
+        return None
 
     # ─────────────────────────────────────────────────────────────────────────
     # Message construction (ephemeral)
     # ─────────────────────────────────────────────────────────────────────────
 
-    def _build_nudge_messages(
-        self,
-        canonical: Optional[list[CanonicalMessage]],
-        coaching: str,
-    ) -> list[dict[str, Any]]:
-        """
-        Build llm_input_messages for NUDGE: original messages + appended system coaching.
-        """
-        if canonical is None:
-            return [{"role": "system", "content": coaching}]
-
-        # Convert canonical back to dicts, then append coaching
-        result = MessageCanonicalizer.to_openai_format(canonical)
-
-        # Append coaching as a system message at the end
-        result.append({"role": "system", "content": coaching})
-        return result
-
     def _build_override_messages(
         self,
-        canonical: Optional[list[CanonicalMessage]],
+        canonical: list[CanonicalMessage],
         coaching: str,
         context: InterventionContext,
     ) -> list[dict[str, Any]]:
@@ -647,16 +556,23 @@ class InterventionEngine:
         if context.consecutive_empty_results > 0:
             return "Try different search terms or a different tool entirely"
         if context.consecutive_errors > 0:
-            return "The current approach is failing. Try a fundamentally different method"
+            return (
+                "The current approach is failing. Try a fundamentally different method"
+            )
         if SignalType.SEMANTIC_STAGNATION in context.active_signals:
-            return "You're rephrasing the same approach. Change your strategy completely"
+            return (
+                "You're rephrasing the same approach. Change your strategy completely"
+            )
         return "Try a different tool or approach to solve this problem"
 
     def _generate_directive(self, context: InterventionContext) -> str:
         """Generate a specific directive for override."""
         attempted = context.strategies_attempted
         if attempted:
-            return f"Do NOT repeat: {', '.join(attempted[-3:])}. Use a completely novel approach."
+            return (
+                f"Do NOT repeat: {', '.join(attempted[-3:])}. "
+                "Use a completely novel approach."
+            )
         return "Stop using the current tool. Choose a different strategy entirely."
 
     def _estimate_savings(self, context: InterventionContext) -> int:

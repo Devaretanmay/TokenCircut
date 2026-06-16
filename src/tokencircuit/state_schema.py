@@ -112,7 +112,10 @@ def tc_state_reducer(
                 result[key] = value
         elif key in _COUNTER_FIELDS:
             existing_val = result.get(key, 0)
-            if isinstance(value, (int, float)) and isinstance(existing_val, (int, float)):
+            is_numeric = isinstance(value, (int, float)) and isinstance(
+                existing_val, (int, float)
+            )
+            if is_numeric:
                 result[key] = max(existing_val, value)
             else:
                 result[key] = value

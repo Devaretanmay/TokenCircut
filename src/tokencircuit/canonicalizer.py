@@ -26,7 +26,7 @@ class MessageCanonicalizer:
     Normalizes heterogeneous message formats into CanonicalMessage instances.
 
     Handles:
-    - LangChain BaseMessage subclasses (HumanMessage, AIMessage, ToolMessage, SystemMessage)
+    - LangChain BaseMessage subclasses (HumanMessage, AIMessage, ToolMessage, etc.)
     - OpenAI-format dicts ({"role": "assistant", "content": "..."})
     - Mixed lists of both formats
     """
@@ -38,14 +38,11 @@ class MessageCanonicalizer:
         self._cache: dict[int, CanonicalMessage] = {}
 
     def canonicalize(self, messages: Sequence[Any]) -> list[CanonicalMessage]:
-        """Convert a sequence of messages to canonical form."""
         result: list[CanonicalMessage] = []
         for idx, msg in enumerate(messages):
             msg_id = id(msg)
             if msg_id in self._cache:
                 cached = self._cache[msg_id]
-                # Update source index to match current position
-                # and return a copy to avoid side effects
                 result.append(CanonicalMessage(
                     role=cached.role,
                     content=cached.content,
@@ -56,20 +53,9 @@ class MessageCanonicalizer:
                 ))
                 continue
 
-            try:
-                canonical = self._convert_single(msg, idx)
-                self._cache[msg_id] = canonical
-                result.append(canonical)
-            except Exception:
-                logger.debug(
-                    "Failed to canonicalize message at index %d: %r", idx, msg
-                )
-                err_msg = CanonicalMessage(
-                    role=CanonicalRole.AI,
-                    content=repr(msg)[:500],
-                    source_index=idx,
-                )
-                result.append(err_msg)
+            canonical = self._convert_single(msg, idx)
+            self._cache[msg_id] = canonical
+            result.append(canonical)
         return result
 
     def _convert_single(self, msg: Any, index: int) -> CanonicalMessage:

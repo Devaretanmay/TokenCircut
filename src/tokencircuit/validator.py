@@ -75,13 +75,7 @@ def _is_args_valid(args: Any) -> bool:
 
 
 class TranscriptValidator:
-    """
-    Validates and repairs message transcripts before LLM consumption.
-
-    Core Principle: Tool calls are IMMUTABLE TRANSACTIONS.
-    Dropping a call drops all its results. Dropping a result does NOT drop the call.
-    Malformed args cause the entire AI message's tool_calls to be treated as void.
-    """
+    """Validates and repairs message transcripts before LLM consumption."""
 
     def __init__(
         self,
@@ -99,10 +93,6 @@ class TranscriptValidator:
         messages: list[CanonicalMessage],
         turn_number: int,
     ) -> ValidationResult:
-        """
-        Validate the canonical message transcript.
-        Stateless: Rebuilds ledger from the full transcript on every call.
-        """
         self._ledger.reset()
 
         dropped_indices: set[int] = set()
@@ -110,153 +100,38 @@ class TranscriptValidator:
         repair_actions: list[str] = []
         signals: list[SignalType] = []
 
-        # Maps call_id -> source AI message index
-        call_id_to_ai_index: dict[str, int] = {}
-        malformed_ai_indices: set[int] = set()
-        malformed_call_ids: set[str] = set()
-
-        # Simulated turn tracking to preserve relative age for ledger timeouts
-        # We start turns at 1 and increment on every AI message
-        local_turn = 1
-        ai_turn_map: dict[int, int] = {}
-
-        # PASS 1: Identify all tool_calls and check structural validity
-        for msg in messages:
-            if msg.role != CanonicalRole.AI:
-                continue
-
-            ai_turn_map[msg.source_index] = local_turn
-            local_turn += 1
-
-            if not msg.tool_calls:
-                continue
-
-            has_malformed = False
-            for tc in msg.tool_calls:
-                call_id = tc.get("id", "")
-                args = tc.get("args", {})
-                if not call_id or not _is_args_valid(args):
-                    has_malformed = True
-                    break
-
-            if has_malformed:
-                malformed_ai_indices.add(msg.source_index)
-                for tc in msg.tool_calls:
-                    cid = tc.get("id", "")
-                    if cid:
-                        malformed_call_ids.add(cid)
-                repair_actions.append(f"MALFORMED_ARGS: index {msg.source_index}")
-            else:
-                for tc in msg.tool_calls:
-                    call_id = tc.get("id", "")
-                    if call_id:
-                        call_id_to_ai_index[call_id] = msg.source_index
-
-        # Set ledger's current turn to match the simulated history
+        # Pass 1: Structural analysis
+        (
+            ai_turn_map,
+            malformed_ai_indices,
+            malformed_call_ids,
+            call_id_to_ai_index,
+        ) = self._analyze_structure(messages)
+        local_turn = max(ai_turn_map.values()) + 1 if ai_turn_map else 1
         self._ledger.advance_turn(local_turn)
 
-        # PASS 2: Register calls with ledger, validate results
-        seen_result_ids: set[str] = set()
-        orphan_count: int = 0
+        # Pass 2: Ledger registration & result validation
+        orphan_count = self._process_messages(
+            messages,
+            ai_turn_map,
+            malformed_ai_indices,
+            malformed_call_ids,
+            call_id_to_ai_index,
+            dropped_indices,
+            dropped_call_ids,
+            repair_actions,
+            local_turn,
+        )
 
-        for msg in messages:
-            if msg.role == CanonicalRole.TOOL and not msg.tool_call_id:
-                dropped_indices.add(msg.source_index)
-                repair_actions.append(f"EMPTY_TOOL_CALL_ID: index {msg.source_index}")
-                continue
-
-            if msg.role == CanonicalRole.AI and msg.tool_calls:
-                if msg.source_index not in malformed_ai_indices:
-                    msg_turn = ai_turn_map.get(msg.source_index, local_turn)
-                    for tc in msg.tool_calls:
-                        call_id = tc.get("id", "")
-                        if call_id:
-                            self._ledger.register_call(
-                                call_id=call_id,
-                                tool_name=tc.get("name", "unknown"),
-                                source_message_index=msg.source_index,
-                                turn_number=msg_turn,
-                            )
-
-            if msg.role == CanonicalRole.TOOL and msg.tool_call_id:
-                tcid = msg.tool_call_id
-                if tcid in malformed_call_ids:
-                    dropped_indices.add(msg.source_index)
-                    dropped_call_ids.append(tcid)
-                    continue
-
-                if tcid in seen_result_ids:
-                    dropped_indices.add(msg.source_index)
-                    dropped_call_ids.append(tcid)
-                    continue
-                seen_result_ids.add(tcid)
-
-                if tcid not in call_id_to_ai_index:
-                    if self._auto_repair:
-                        dropped_indices.add(msg.source_index)
-                        dropped_call_ids.append(tcid)
-                        orphan_count += 1
-                    continue
-
-                ai_index = call_id_to_ai_index.get(tcid)
-                if ai_index is not None and msg.source_index <= ai_index:
-                    if self._auto_repair:
-                        dropped_indices.add(msg.source_index)
-                        dropped_call_ids.append(tcid)
-                    continue
-
-                # Register result using the turn of the original call
-                call_turn = ai_turn_map.get(ai_index, local_turn)
-                self._ledger.register_result(
-                    call_id=tcid,
-                    result_content_prefix=msg.content[:200],
-                    result_length=len(msg.content),
-                    source_message_index=msg.source_index,
-                    turn_number=call_turn,
-                )
-
-        # Build output and apply Invariant 11 (No dangling calls)
-        validated: list[CanonicalMessage] = []
-        for msg in messages:
-            if msg.source_index in dropped_indices:
-                continue
-
-            if msg.role == CanonicalRole.SYSTEM:
-                validated.append(msg)
-                continue
-
-            if msg.source_index in malformed_ai_indices and msg.role == CanonicalRole.AI:
-                validated.append(CanonicalMessage(
-                    role=msg.role, content=msg.content, tool_calls=[],
-                    tool_call_id=msg.tool_call_id, source_index=msg.source_index, name=msg.name
-                ))
-                continue
-
-            validated.append(msg)
-
+        # Reconstruct & Repair
+        validated = self._reconstruct_transcript(
+            messages, dropped_indices, malformed_ai_indices
+        )
         if self._auto_repair and validated:
-            resolved_call_ids = {m.tool_call_id for m in validated if m.role == CanonicalRole.TOOL and m.tool_call_id}
-            last_ai_idx = -1
-            for i, m in enumerate(validated):
-                if m.role == CanonicalRole.AI and m.tool_calls:
-                    last_ai_idx = i
-
-            repaired = []
-            for i, msg in enumerate(validated):
-                if msg.role == CanonicalRole.AI and msg.tool_calls and i != last_ai_idx:
-                    resolved = [tc for tc in msg.tool_calls if tc.get("id") in resolved_call_ids]
-                    if len(resolved) != len(msg.tool_calls):
-                        repair_actions.append(f"DANGLING_CALL: index {msg.source_index}")
-                        msg = CanonicalMessage(
-                            role=msg.role, content=msg.content, tool_calls=resolved,
-                            tool_call_id=msg.tool_call_id, source_index=msg.source_index, name=msg.name
-                        )
-                repaired.append(msg)
-            validated = repaired
+            validated = self._repair_dangling_calls(validated, repair_actions)
 
         if orphan_count > 0:
             signals.append(SignalType.TOOL_TRANSACTION_ORPHAN)
-
         if orphan_count > self._max_orphan_tolerance or malformed_ai_indices:
             signals.append(SignalType.TRANSCRIPT_CORRUPTION)
 
@@ -268,5 +143,167 @@ class TranscriptValidator:
             signals=signals,
             repair_actions=repair_actions,
         )
+
+    def _analyze_structure(self, messages: list[CanonicalMessage]):
+        ai_turn_map = {}
+        malformed_ai_indices = set()
+        malformed_call_ids = set()
+        call_id_to_ai_index = {}
+        local_turn = 1
+
+        for msg in messages:
+            if msg.role != CanonicalRole.AI:
+                continue
+
+            ai_turn_map[msg.source_index] = local_turn
+            local_turn += 1
+
+            if not msg.tool_calls:
+                continue
+
+            has_malformed = any(
+                not tc.get("id") or not _is_args_valid(tc.get("args"))
+                for tc in msg.tool_calls
+            )
+
+            if has_malformed:
+                malformed_ai_indices.add(msg.source_index)
+                malformed_call_ids.update(
+                    tc.get("id", "") for tc in msg.tool_calls if tc.get("id")
+                )
+            else:
+                for tc in msg.tool_calls:
+                    if cid := tc.get("id"):
+                        call_id_to_ai_index[cid] = msg.source_index
+
+        return (
+            ai_turn_map,
+            malformed_ai_indices,
+            malformed_call_ids,
+            call_id_to_ai_index,
+        )
+
+    def _process_messages(
+        self,
+        messages,
+        ai_turn_map,
+        malformed_ai_indices,
+        malformed_call_ids,
+        call_id_to_ai_index,
+        dropped_indices,
+        dropped_call_ids,
+        repair_actions,
+        local_turn,
+    ):
+        seen_result_ids = set()
+        orphan_count = 0
+
+        for msg in messages:
+            if msg.role == CanonicalRole.TOOL and not msg.tool_call_id:
+                dropped_indices.add(msg.source_index)
+                continue
+
+            is_valid_ai = (
+                msg.role == CanonicalRole.AI
+                and msg.tool_calls
+                and msg.source_index not in malformed_ai_indices
+            )
+            if is_valid_ai:
+                msg_turn = ai_turn_map.get(msg.source_index, local_turn)
+                for tc in msg.tool_calls:
+                    if cid := tc.get("id"):
+                        self._ledger.register_call(
+                            cid, tc.get("name", "unknown"), msg.source_index, msg_turn
+                        )
+
+            if msg.role == CanonicalRole.TOOL and msg.tool_call_id:
+                tcid = msg.tool_call_id
+                if tcid in malformed_call_ids or tcid in seen_result_ids:
+                    dropped_indices.add(msg.source_index)
+                    dropped_call_ids.append(tcid)
+                    continue
+                seen_result_ids.add(tcid)
+
+                ai_index = call_id_to_ai_index.get(tcid)
+                if ai_index is None:
+                    if self._auto_repair:
+                        dropped_indices.add(msg.source_index)
+                        dropped_call_ids.append(tcid)
+                        orphan_count += 1
+                    continue
+
+                if msg.source_index <= ai_index:
+                    if self._auto_repair:
+                        dropped_indices.add(msg.source_index)
+                        dropped_call_ids.append(tcid)
+                    continue
+
+                self._ledger.register_result(
+                    tcid,
+                    msg.content[:200],
+                    len(msg.content),
+                    msg.source_index,
+                    ai_turn_map.get(ai_index, local_turn),
+                )
+
+        return orphan_count
+
+    def _reconstruct_transcript(self, messages, dropped_indices, malformed_ai_indices):
+        validated = []
+        for msg in messages:
+            if msg.source_index in dropped_indices:
+                continue
+            is_malformed_ai = (
+                msg.source_index in malformed_ai_indices
+                and msg.role == CanonicalRole.AI
+            )
+            if is_malformed_ai:
+                validated.append(
+                    CanonicalMessage(
+                        role=msg.role,
+                        content=msg.content,
+                        tool_calls=[],
+                        tool_call_id=msg.tool_call_id,
+                        source_index=msg.source_index,
+                        name=msg.name,
+                    )
+                )
+            else:
+                validated.append(msg)
+        return validated
+
+    def _repair_dangling_calls(self, validated, repair_actions):
+        resolved_call_ids = {
+            m.tool_call_id
+            for m in validated
+            if m.role == CanonicalRole.TOOL and m.tool_call_id
+        }
+        last_ai_idx = next(
+            (
+                i
+                for i in range(len(validated) - 1, -1, -1)
+                if validated[i].role == CanonicalRole.AI and validated[i].tool_calls
+            ),
+            -1,
+        )
+
+        repaired = []
+        for i, msg in enumerate(validated):
+            if msg.role == CanonicalRole.AI and msg.tool_calls and i != last_ai_idx:
+                resolved = [
+                    tc for tc in msg.tool_calls if tc.get("id") in resolved_call_ids
+                ]
+                if len(resolved) != len(msg.tool_calls):
+                    repair_actions.append(f"DANGLING_CALL: index {msg.source_index}")
+                    msg = CanonicalMessage(
+                        role=msg.role,
+                        content=msg.content,
+                        tool_calls=resolved,
+                        tool_call_id=msg.tool_call_id,
+                        source_index=msg.source_index,
+                        name=msg.name,
+                    )
+            repaired.append(msg)
+        return repaired
 
 
