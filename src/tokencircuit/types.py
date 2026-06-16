@@ -78,8 +78,6 @@ class ToolCallRecord(BaseModel):
 
     call_id: str
     tool_name: str
-    arguments_hash: str
-    arguments_type_signature: str
     source_message_index: int
     turn_number: int
 
@@ -90,7 +88,6 @@ class ToolResultRecord(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     call_id: str
-    result_hash: str
     result_content_prefix: str = Field(
         default="",
         description="First 200 chars of result for outcome classification",
@@ -135,18 +132,11 @@ class InterventionContext(BaseModel):
     node_name: str
     turn_number: int
 
-    # Messages
-    canonical_messages: list[dict[str, Any]] = Field(default_factory=list)
-    raw_message_count: int = 0
-    validated_message_count: int = 0
-
     # Detection
     active_signals: list[SignalType] = Field(default_factory=list)
     semantic_similarity_score: float = 0.0
-    pattern_diversity: float = 1.0
 
     # Transactions
-    pending_transactions: int = 0
     orphaned_transaction_ids: list[str] = Field(default_factory=list)
     dropped_this_turn: list[str] = Field(default_factory=list)
     consecutive_empty_results: int = 0
@@ -226,5 +216,4 @@ class CanonicalMessage:
             parts.append(f"tool_call_id={self.tool_call_id!r}")
         return f"CanonicalMessage({', '.join(parts)})"
 
-    def has_tool_calls(self) -> bool:
-        return bool(self.tool_calls)
+

@@ -14,7 +14,7 @@ def test_engine_emits_otel_spans():
     mock_span = MagicMock()
     mock_tracer.start_as_current_span.return_value.__enter__.return_value = mock_span
     
-    with patch("tokencircuit.engine.get_tracer", return_value=mock_tracer):
+    with patch("tokencircuit.engine._get_tracer", return_value=mock_tracer):
         config = InterventionConfig(max_tokens_per_turn=10) # Set low to force RUNAWAY_GENERATION
         engine = InterventionEngine(config=config)
         

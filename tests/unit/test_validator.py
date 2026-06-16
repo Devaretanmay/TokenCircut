@@ -21,10 +21,7 @@ from tokencircuit.ledger import ToolTransactionLedger
 from tokencircuit.validator import (
     TranscriptValidator,
     ValidationResult,
-    _hash_args,
-    _hash_content,
     _is_args_valid,
-    _extract_type_signature,
 )
 
 
@@ -87,7 +84,6 @@ def strict_validator(ledger: ToolTransactionLedger) -> TranscriptValidator:
     return TranscriptValidator(
         ledger=ledger,
         auto_repair=False,
-        strict_mode=True,
         max_orphan_tolerance=0,
     )
 
@@ -454,45 +450,7 @@ class TestOrphanSignal:
 
 
 # ===========================================================================
-# 12. _hash_args consistency
-# ===========================================================================
-
-class TestHashArgs:
-    """_hash_args must produce deterministic, consistent hashes."""
-
-    def test_same_dict_same_hash(self) -> None:
-        """Identical dicts produce the same hash."""
-        d = {"query": "hello", "limit": 10}
-        assert _hash_args(d) == _hash_args(d)
-
-    def test_key_order_independent(self) -> None:
-        """Dicts with same keys but inserted in different order get same hash."""
-        a = {"b": 2, "a": 1}
-        b = {"a": 1, "b": 2}
-        assert _hash_args(a) == _hash_args(b)
-
-    def test_different_dicts_different_hash(self) -> None:
-        """Distinct dicts produce distinct hashes."""
-        assert _hash_args({"a": 1}) != _hash_args({"a": 2})
-
-    def test_string_input(self) -> None:
-        """String args are hashed directly."""
-        h = _hash_args("raw string")
-        assert isinstance(h, str) and len(h) == 64  # SHA-256 hex digest
-
-    def test_non_dict_non_str(self) -> None:
-        """Non-dict, non-str inputs are str()-ified then hashed."""
-        h = _hash_args(42)
-        assert isinstance(h, str) and len(h) == 64
-
-    def test_hash_content_deterministic(self) -> None:
-        """_hash_content is also deterministic."""
-        assert _hash_content("abc") == _hash_content("abc")
-        assert _hash_content("abc") != _hash_content("xyz")
-
-
-# ===========================================================================
-# 14. _is_args_valid
+# 12. _is_args_valid
 # ===========================================================================
 
 class TestIsArgsValid:
@@ -607,28 +565,6 @@ class TestEdgeCases:
         assert hasattr(result, "dropped_call_ids")
         assert hasattr(result, "signals")
         assert hasattr(result, "repair_actions")
-
-    def test_repair_summary_accumulates(self, validator: TranscriptValidator) -> None:
-        """get_repair_summary() accumulates counts across multiple validate() calls."""
-        msgs = [
-            _ai(idx=0, tool_calls=[_tc("c1")]),
-            _tool("r1", call_id="c1", idx=1),
-            _tool("r2", call_id="c1", idx=2),  # duplicate
-        ]
-        validator.validate(msgs, turn_number=1)
-        validator.validate(msgs, turn_number=2)
-        summary = validator.get_repair_summary()
-        assert summary["total_validated"] == 2
-
-    def test_extract_type_signature_dict_args(self) -> None:
-        """_extract_type_signature builds 'name(type,type)' from dict args."""
-        sig = _extract_type_signature("search", {"q": "hello", "n": 5})
-        assert sig == "search(str,int)"
-
-    def test_extract_type_signature_non_dict_args(self) -> None:
-        """Non-dict args produce 'name()' signature."""
-        sig = _extract_type_signature("search", "not a dict")  # type: ignore[arg-type]
-        assert sig == "search()"
 
     def test_ai_without_tool_calls_passes(self, validator: TranscriptValidator) -> None:
         """Plain AI messages (no tool_calls) are always valid."""

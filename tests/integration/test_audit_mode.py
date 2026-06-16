@@ -7,7 +7,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, BaseMessage
 from typing import TypedDict, Annotated
 
-from tokencircuit import instrument_langgraph, InterventionConfig
+from tokencircuit import InterventionConfig
 from tokencircuit.state_schema import InterventionStateSchema, tc_state_reducer
 
 class AgentState(TypedDict):
@@ -34,16 +34,8 @@ def should_continue(state: AgentState):
 
 @pytest.mark.asyncio
 async def test_audit_mode_prevents_intervention():
-    """Verify that audit_mode=True never mutates messages or stops the agent."""
-    
-    builder = StateGraph(AgentState)
-    builder.add_node("llm", stub_llm)
-    builder.add_node("tool", fetch_weather_tool)
-    builder.add_edge(START, "llm")
-    builder.add_conditional_edges("llm", should_continue)
-    builder.add_edge("tool", "llm")
+    from tokencircuit.adapters.langgraph import LangGraphPreModelAdapter
 
-    # Set thresholds very low to trigger intervention immediately, but enable audit_mode
     config = InterventionConfig(
         nudge_threshold=1,
         override_threshold=2,
@@ -51,15 +43,20 @@ async def test_audit_mode_prevents_intervention():
         window_size=5,
         audit_mode=True,
     )
-    
-    instrumented_builder = instrument_langgraph(builder, config=config)
-    graph = instrumented_builder.compile()
+    adapter = LangGraphPreModelAdapter(config=config)
+
+    builder = StateGraph(AgentState)
+    builder.add_node("llm", stub_llm, pre_model_hook=adapter.create_hook(node_name="llm"))
+    builder.add_node("tool", fetch_weather_tool)
+    builder.add_edge(START, "llm")
+    builder.add_conditional_edges("llm", should_continue)
+    builder.add_edge("tool", "llm")
+
+    graph = builder.compile()
 
     state = {"messages": [HumanMessage(content="What is the weather?")], "_tc_intervention": {}}
     run_config = {"configurable": {"thread_id": "audit_1"}}
-    
-    # We will manually step through to simulate the loop and check if it gets stopped
-    # We expect it to reach 10 turns without raising TokenCircuitError
+
     turns = 0
     try:
         async for chunk in graph.astream(state, config=run_config):
@@ -69,5 +66,5 @@ async def test_audit_mode_prevents_intervention():
                 break
     except Exception as e:
         pytest.fail(f"Audit mode failed to prevent exception: {e}")
-        
+
     assert turns >= 10, "Agent did not loop as expected, suggesting intervention mutated the flow"

@@ -62,13 +62,8 @@ def _make_context(**overrides) -> InterventionContext:
         thread_id="test-thread",
         node_name="agent",
         turn_number=1,
-        canonical_messages=[],
-        raw_message_count=0,
-        validated_message_count=0,
         active_signals=[],
         semantic_similarity_score=0.0,
-        pattern_diversity=1.0,
-        pending_transactions=0,
         orphaned_transaction_ids=[],
         dropped_this_turn=[],
         consecutive_empty_results=0,
@@ -818,8 +813,8 @@ class TestProcessFailSafe:
         # Patch _process_impl to raise an exception
         engine._process_impl = MagicMock(side_effect=RuntimeError("boom"))
 
-        # Also patch get_tracer to return None so we use the non-tracing path
-        with patch("tokencircuit.engine.get_tracer", return_value=None):
+        # Also patch _get_tracer to return None so we use the non-tracing path
+        with patch("tokencircuit.engine._get_tracer", return_value=None):
             decision = engine.process(
                 messages=[], state={}, thread_id="t1", node_name="n1"
             )
@@ -841,7 +836,7 @@ class TestProcessFailSafe:
         mock_tracer = MagicMock()
         mock_tracer.start_as_current_span.return_value = mock_span
 
-        with patch("tokencircuit.engine.get_tracer", return_value=mock_tracer):
+        with patch("tokencircuit.engine._get_tracer", return_value=mock_tracer):
             decision = engine.process(
                 messages=[], state={}, thread_id="t1", node_name="n1"
             )
@@ -1000,7 +995,7 @@ class TestEdgeCases:
             nudge_threshold=1,
             override_threshold=2,
             hard_stop_threshold=3,
-            nudge_template="A" * 1000 + " {n_turns} {tool_name} {outcome_summary} {suggestion}",
+            nudge_template="A" * 1000 + " {n_turns} {outcome_summary} {suggestion}",
         )
         eng = InterventionEngine(config=cfg)
         ctx = _make_context(
@@ -1017,7 +1012,7 @@ class TestEdgeCases:
             nudge_threshold=1,
             override_threshold=2,
             hard_stop_threshold=3,
-            nudge_template="B" * 500 + " {n_turns} {tool_name} {outcome_summary} {suggestion}",
+            nudge_template="B" * 500 + " {n_turns} {outcome_summary} {suggestion}",
         )
         eng = InterventionEngine(config=cfg)
         ctx = _make_context(

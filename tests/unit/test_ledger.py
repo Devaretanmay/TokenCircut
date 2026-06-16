@@ -53,8 +53,6 @@ def _register_call(
     return ledger.register_call(
         call_id=call_id,
         tool_name=tool_name,
-        arguments_hash="abc123",
-        arguments_type_signature="(path: str)",
         source_message_index=0,
         turn_number=turn,
     )
@@ -70,7 +68,6 @@ def _register_result(
     """Helper to register a result with sensible defaults."""
     return ledger.register_result(
         call_id=call_id,
-        result_hash="res_hash",
         result_content_prefix=content,
         result_length=length if length is not None else len(content),
         source_message_index=1,

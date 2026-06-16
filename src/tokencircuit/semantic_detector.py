@@ -41,27 +41,9 @@ def _get_encoder() -> object:
     """Lazy-load tiktoken cl100k_base encoder."""
     global _encoder
     if _encoder is None:
-        try:
-            import tiktoken
-
-            _encoder = tiktoken.get_encoding("cl100k_base")
-        except ImportError:
-            logger.warning(
-                "tiktoken not available; falling back to whitespace tokenization"
-            )
-            _encoder = _FallbackTokenizer()
+        import tiktoken
+        _encoder = tiktoken.get_encoding("cl100k_base")
     return _encoder
-
-
-class _FallbackTokenizer:
-    """Whitespace + punctuation tokenizer when tiktoken is unavailable."""
-
-    _SPLIT_RE = re.compile(r"[\w]+|[^\s\w]")
-
-    def encode(self, text: str) -> list[int]:
-        """Tokenize by splitting on word boundaries, return pseudo-token IDs."""
-        tokens = self._SPLIT_RE.findall(text.lower())
-        return [hash(t) & 0xFFFFFFFF for t in tokens]
 
 
 def _compute_shingles(token_ids: list[int], n: int) -> frozenset[tuple[int, ...]]:

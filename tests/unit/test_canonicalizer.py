@@ -773,44 +773,7 @@ class TestCacheBehavior:
 
 
 # ===================================================================
-# 10. clear_cache()
-# ===================================================================
-
-
-class TestClearCache:
-    """Tests for the clear_cache() method."""
-
-    def test_clear_cache_empties_cache(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """clear_cache() should remove all cached entries."""
-        msg = {"role": "user", "content": "x"}
-        canonicalizer.canonicalize([msg])
-        assert len(canonicalizer._cache) > 0
-        canonicalizer.clear_cache()
-        assert len(canonicalizer._cache) == 0
-
-    def test_clear_cache_allows_reconversion(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """After clearing cache, re-canonicalization should still work correctly."""
-        msg = {"role": "assistant", "content": "hi"}
-        r1 = canonicalizer.canonicalize([msg])
-        canonicalizer.clear_cache()
-        r2 = canonicalizer.canonicalize([msg])
-        assert r1[0].role == r2[0].role
-        assert r1[0].content == r2[0].content
-
-    def test_clear_cache_idempotent(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """Calling clear_cache() on an already empty cache should not raise."""
-        canonicalizer.clear_cache()
-        canonicalizer.clear_cache()  # Should not raise
-
-
-# ===================================================================
-# 11. to_openai_format() round-trip
+# 10. to_openai_format() round-trip
 # ===================================================================
 
 
@@ -1016,18 +979,6 @@ class TestEdgeCases:
         result = canonicalizer.canonicalize([])
         assert result == []
 
-    def test_has_tool_calls_method(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """CanonicalMessage.has_tool_calls() should reflect tool_calls presence."""
-        msg_with = CanonicalMessage(
-            role=CanonicalRole.AI,
-            tool_calls=[{"id": "1", "name": "fn", "args": {}}],
-        )
-        msg_without = CanonicalMessage(role=CanonicalRole.AI)
-        assert msg_with.has_tool_calls() is True
-        assert msg_without.has_tool_calls() is False
-
     def test_unconvertable_message_falls_back_to_repr(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
@@ -1108,20 +1059,4 @@ class TestEdgeCases:
         assert result[1].content == "from langchain"
 
 
-# ===================================================================
-# Additional: strip_prefixes constructor parameter
-# ===================================================================
 
-
-class TestConstructorOptions:
-    """Tests for constructor parameters."""
-
-    def test_custom_strip_prefixes(self) -> None:
-        """Custom strip_prefixes should be stored on the instance."""
-        c = MessageCanonicalizer(strip_prefixes=("_custom_",))
-        assert c._strip_prefixes == ("_custom_",)
-
-    def test_default_strip_prefixes(self) -> None:
-        """Default strip_prefixes should match the module-level constant."""
-        c = MessageCanonicalizer()
-        assert c._strip_prefixes == ("_tc_", "_meta_", "__")

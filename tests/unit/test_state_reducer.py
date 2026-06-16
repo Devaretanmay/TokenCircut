@@ -77,7 +77,7 @@ class TestReducerNoneExisting:
         assert result["current_stage"] == "nudge"
         # Other fields should be default values
         assert result["turn_counter"] == 0
-        assert result["fingerprint_hashes"] == []
+        assert result["coaching_history"] == []
 
     def test_none_existing_with_empty_update(self) -> None:
         """None existing + empty update should equal the raw defaults."""
@@ -114,8 +114,8 @@ class TestReducerListFields:
         self, default_state: InterventionStateSchema
     ) -> None:
         """Duplicates *within* the update list itself are also collapsed."""
-        result = tc_state_reducer(default_state, {"fingerprint_hashes": ["x", "x", "y"]})
-        assert result["fingerprint_hashes"] == ["x", "y"]
+        result = tc_state_reducer(default_state, {"strategies_attempted": ["x", "x", "y"]})
+        assert result["strategies_attempted"] == ["x", "y"]
 
     def test_list_dedup_preserves_first_occurrence_order(
         self, default_state: InterventionStateSchema
@@ -273,7 +273,7 @@ class TestReducerMixedUpdate:
         initial = tc_state_reducer(
             default_state,
             {
-                "fingerprint_hashes": ["h1", "h2"],
+                "strategies_attempted": ["h1", "h2"],
                 "turn_counter": 5,
                 "current_stage": "pass",
             },
@@ -282,7 +282,7 @@ class TestReducerMixedUpdate:
         # Now apply a mixed update
         mixed_update = {
             # list field: should append with dedup
-            "fingerprint_hashes": ["h2", "h3"],
+            "strategies_attempted": ["h2", "h3"],
             # counter field: 3 < 5, should keep 5
             "turn_counter": 3,
             # counter field: 10 > 0, should become 10
@@ -293,7 +293,7 @@ class TestReducerMixedUpdate:
         }
         result = tc_state_reducer(initial, mixed_update)
 
-        assert result["fingerprint_hashes"] == ["h1", "h2", "h3"]
+        assert result["strategies_attempted"] == ["h1", "h2", "h3"]
         assert result["turn_counter"] == 5  # MAX(5, 3)
         assert result["total_interventions"] == 10  # MAX(0, 10)
         assert result["current_stage"] == "override"

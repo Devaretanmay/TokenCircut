@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 from collections import OrderedDict
@@ -45,7 +44,7 @@ _PERMANENT_ERROR_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 
 @lru_cache(maxsize=100)
-def _classify_outcome_cached(content_hash: str, content: str, length: int) -> TransactionOutcome:
+def _classify_outcome_cached(content: str, length: int) -> TransactionOutcome:
     """Cached version of outcome classification."""
     if length == 0 or not content.strip():
         return TransactionOutcome.EMPTY
@@ -69,16 +68,8 @@ def _classify_outcome_cached(content_hash: str, content: str, length: int) -> Tr
 
 
 def _classify_outcome(content: str, length: int) -> TransactionOutcome:
-    """
-    Classify tool result as success, empty, or error based on content.
-    Uses hash-based caching to avoid expensive regex on repeats.
-    """
-    if length < 100:
-        # Small contents are fast, don't bother hashing, use string as cache key
-        return _classify_outcome_cached(content, content, length)
-
-    content_hash = hashlib.sha256(content[:1000].encode()).hexdigest()
-    return _classify_outcome_cached(content_hash, content, length)
+    """Classify tool result as success, empty, or error based on content."""
+    return _classify_outcome_cached(content, length)
 
 
 class ToolTransactionLedger:
@@ -117,8 +108,6 @@ class ToolTransactionLedger:
         self,
         call_id: str,
         tool_name: str,
-        arguments_hash: str,
-        arguments_type_signature: str,
         source_message_index: int,
         turn_number: int,
     ) -> ToolTransaction:
@@ -141,8 +130,6 @@ class ToolTransactionLedger:
         record = ToolCallRecord(
             call_id=call_id,
             tool_name=tool_name,
-            arguments_hash=arguments_hash,
-            arguments_type_signature=arguments_type_signature,
             source_message_index=source_message_index,
             turn_number=turn_number,
         )
@@ -163,7 +150,6 @@ class ToolTransactionLedger:
     def register_result(
         self,
         call_id: str,
-        result_hash: str,
         result_content_prefix: str,
         result_length: int,
         source_message_index: int,
@@ -182,7 +168,6 @@ class ToolTransactionLedger:
         outcome = _classify_outcome(result_content_prefix, result_length)
         result_record = ToolResultRecord(
             call_id=call_id,
-            result_hash=result_hash,
             result_content_prefix=result_content_prefix[:200],
             result_length=result_length,
             source_message_index=source_message_index,

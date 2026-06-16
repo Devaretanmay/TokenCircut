@@ -43,17 +43,14 @@ class LangGraphPreModelAdapter:
         *,
         config: Optional[InterventionConfig] = None,
         engine: Optional[InterventionEngine] = None,
-        api_key: Optional[str] = None,
     ) -> None:
         """
         Args:
             config: V7 configuration. If None, uses defaults.
             engine: Pre-built engine. If None, creates one from config.
-            api_key: For remote config loading (future use).
         """
         self._config = config or InterventionConfig()
         self._engine = engine or InterventionEngine(config=self._config)
-        self._api_key = api_key
         self._default_node_name = "agent"
 
     async def hook(self, state: dict[str, Any]) -> dict[str, Any]:
@@ -78,13 +75,6 @@ class LangGraphPreModelAdapter:
         """
         return self._execute_hook(state, node_name=self._default_node_name)
 
-    def hook_sync(self, state: dict[str, Any]) -> dict[str, Any]:
-        """
-        Synchronous hook for non-async contexts.
-        Same contract as hook() but callable without await.
-        """
-        return self._execute_hook(state, node_name=self._default_node_name)
-
     def create_hook(
         self,
         *,
@@ -102,8 +92,6 @@ class LangGraphPreModelAdapter:
         async def _bound_hook(state: dict[str, Any]) -> dict[str, Any]:
             return self._execute_hook(state, node_name=node_name)
 
-        _bound_hook.__name__ = f"tc_pre_model_hook_{node_name}"
-        _bound_hook.__qualname__ = f"LangGraphPreModelAdapter.hook[{node_name}]"
         return _bound_hook
 
     def _execute_hook(self, state: dict[str, Any], *, node_name: str) -> dict[str, Any]:
@@ -137,7 +125,7 @@ class LangGraphPreModelAdapter:
             raise
         except Exception as exc:
             # Re-raise TokenCircuitError from HARD_STOP — it's intentional termination
-            from ..exceptions import TokenCircuitError
+            from ..engine import TokenCircuitError
 
             if isinstance(exc, TokenCircuitError):
                 raise
@@ -218,13 +206,10 @@ class LangGraphPreModelAdapter:
                 return Command(goto="__end__", update=result)  # type: ignore[return-value]
             except ImportError:
                 # If Command not available, raise to terminate
-                from ..exceptions import TokenCircuitError
+                from ..engine import TokenCircuitError
 
                 raise TokenCircuitError(
                     decision.termination_reason or "TokenCircuit HARD_STOP",
-                    signal_type="HARD_STOP",
-                    node_name="",
-                    iteration=decision.state_patch.get("turn_counter", 0),
                 )
 
         return result

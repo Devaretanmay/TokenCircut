@@ -29,13 +29,10 @@ class InterventionStateSchema(TypedDict, total=False):
     last_deescalation_turn: int
 
     # Semantic window
-    fingerprint_hashes: list[str]
     last_similarity_score: float
 
     # Transaction ledger (serialized subset)
-    pending_transaction_ids: list[str]
     orphaned_transaction_ids: list[str]
-    committed_transaction_count: int
     dropped_this_session: list[str]
 
     # Coaching
@@ -45,8 +42,6 @@ class InterventionStateSchema(TypedDict, total=False):
 
 
 _LIST_FIELDS = frozenset({
-    "fingerprint_hashes",
-    "pending_transaction_ids",
     "orphaned_transaction_ids",
     "dropped_this_session",
     "coaching_history",
@@ -58,7 +53,6 @@ _COUNTER_FIELDS = frozenset({
     "total_interventions",
     "nudge_count",
     "override_count",
-    "committed_transaction_count",
 })
 
 
@@ -76,11 +70,8 @@ def default_intervention_state() -> InterventionStateSchema:
         cooldown_remaining=0,
         last_escalation_turn=0,
         last_deescalation_turn=0,
-        fingerprint_hashes=[],
         last_similarity_score=0.0,
-        pending_transaction_ids=[],
         orphaned_transaction_ids=[],
-        committed_transaction_count=0,
         dropped_this_session=[],
         last_coaching_message="",
         coaching_history=[],

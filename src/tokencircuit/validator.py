@@ -37,8 +37,6 @@ THE 10 INVARIANTS:
 
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -63,30 +61,6 @@ class ValidationResult:
     dropped_call_ids: list[str] = field(default_factory=list)
     signals: list[SignalType] = field(default_factory=list)
     repair_actions: list[str] = field(default_factory=list)
-
-
-def _hash_args(args: Any) -> str:
-    """Compute SHA-256 of canonical JSON-serialized arguments."""
-    if isinstance(args, dict):
-        serialized = json.dumps(args, sort_keys=True, default=str)
-    elif isinstance(args, str):
-        serialized = args
-    else:
-        serialized = str(args)
-    return hashlib.sha256(serialized.encode()).hexdigest()
-
-
-def _hash_content(content: str) -> str:
-    """Compute SHA-256 of content string."""
-    return hashlib.sha256(content.encode()).hexdigest()
-
-
-def _extract_type_signature(name: str, args: dict[str, Any]) -> str:
-    """Build PII-safe type signature from tool args."""
-    if not isinstance(args, dict):
-        return f"{name}()"
-    arg_types = ",".join(type(v).__name__ for v in args.values())
-    return f"{name}({arg_types})"
 
 
 def _is_args_valid(args: Any) -> bool:
@@ -114,15 +88,11 @@ class TranscriptValidator:
         *,
         ledger: ToolTransactionLedger,
         auto_repair: bool = True,
-        strict_mode: bool = False,
         max_orphan_tolerance: int = 2,
     ) -> None:
         self._ledger = ledger
         self._auto_repair = auto_repair
-        self._strict_mode = strict_mode
         self._max_orphan_tolerance = max_orphan_tolerance
-
-        self._total_validated: int = 0
 
     def validate(
         self,
@@ -133,7 +103,6 @@ class TranscriptValidator:
         Validate the canonical message transcript.
         Stateless: Rebuilds ledger from the full transcript on every call.
         """
-        self._total_validated += 1
         self._ledger.reset()
 
         dropped_indices: set[int] = set()
@@ -205,8 +174,6 @@ class TranscriptValidator:
                             self._ledger.register_call(
                                 call_id=call_id,
                                 tool_name=tc.get("name", "unknown"),
-                                arguments_hash=_hash_args(tc.get("args", {})),
-                                arguments_type_signature=_extract_type_signature(tc.get("name", "unknown"), tc.get("args", {})),
                                 source_message_index=msg.source_index,
                                 turn_number=msg_turn,
                             )
@@ -242,7 +209,6 @@ class TranscriptValidator:
                 call_turn = ai_turn_map.get(ai_index, local_turn)
                 self._ledger.register_result(
                     call_id=tcid,
-                    result_hash=_hash_content(msg.content),
                     result_content_prefix=msg.content[:200],
                     result_length=len(msg.content),
                     source_message_index=msg.source_index,
@@ -303,8 +269,4 @@ class TranscriptValidator:
             repair_actions=repair_actions,
         )
 
-    def get_repair_summary(self) -> dict[str, int]:
-        """Return cumulative repair statistics."""
-        return {
-            "total_validated": self._total_validated,
-        }
+

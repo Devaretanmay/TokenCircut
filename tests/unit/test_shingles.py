@@ -6,22 +6,12 @@ import pytest
 
 from tokencircuit.semantic_detector import (
     SemanticStagnationDetector,
-    _FallbackTokenizer,
     _compute_shingles,
     _extract_structural_pattern,
     _jaccard_similarity,
     _normalize_text,
 )
 from tokencircuit.types import CanonicalMessage, CanonicalRole
-
-
-# ── Fixtures ──────────────────────────────────────────────────────────────────
-
-
-@pytest.fixture
-def fallback_tokenizer() -> _FallbackTokenizer:
-    """A fresh _FallbackTokenizer instance."""
-    return _FallbackTokenizer()
 
 
 # ── _compute_shingles ─────────────────────────────────────────────────────────
@@ -292,45 +282,6 @@ class TestExtractStructuralPattern:
         ]
         pattern = _extract_structural_pattern(messages)
         assert "CALL(search,fetch)" in pattern
-
-
-# ── _FallbackTokenizer ────────────────────────────────────────────────────────
-
-
-class TestFallbackTokenizer:
-    """Verify the fallback whitespace tokenizer."""
-
-    def test_encode_returns_list_of_ints(self, fallback_tokenizer: _FallbackTokenizer) -> None:
-        """encode() must return a list of integers."""
-        result = fallback_tokenizer.encode("hello world foo")
-        assert isinstance(result, list)
-        assert all(isinstance(t, int) for t in result)
-
-    def test_encode_splits_on_word_boundaries(self, fallback_tokenizer: _FallbackTokenizer) -> None:
-        """Each word/punctuation token produces one integer."""
-        result = fallback_tokenizer.encode("hello world")
-        assert len(result) == 2
-
-    def test_encode_handles_punctuation(self, fallback_tokenizer: _FallbackTokenizer) -> None:
-        """Punctuation should be split into separate tokens."""
-        result = fallback_tokenizer.encode("hello, world!")
-        # "hello", ",", "world", "!" → 4 tokens
-        assert len(result) == 4
-
-    def test_encode_empty_string(self, fallback_tokenizer: _FallbackTokenizer) -> None:
-        """Empty string → empty list."""
-        assert fallback_tokenizer.encode("") == []
-
-    def test_encode_deterministic(self, fallback_tokenizer: _FallbackTokenizer) -> None:
-        """Same input should always produce the same output."""
-        text = "consistent tokenization test"
-        assert fallback_tokenizer.encode(text) == fallback_tokenizer.encode(text)
-
-    def test_encode_values_are_32bit(self, fallback_tokenizer: _FallbackTokenizer) -> None:
-        """Token IDs should be masked to 32-bit (& 0xFFFFFFFF)."""
-        result = fallback_tokenizer.encode("test")
-        for token_id in result:
-            assert 0 <= token_id <= 0xFFFFFFFF
 
 
 # ── SemanticStagnationDetector validation ─────────────────────────────────────

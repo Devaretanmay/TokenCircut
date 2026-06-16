@@ -15,7 +15,7 @@ from typing import Any
 from tokencircuit.engine import InterventionEngine, InterventionConfig
 from tokencircuit.state_schema import default_intervention_state
 from tokencircuit.types import InterventionStage, SignalType
-from tokencircuit.exceptions import TokenCircuitError
+from tokencircuit.engine import TokenCircuitError
 
 
 def _make_tool_call_msg(call_id: str, name: str, args: dict[str, Any]) -> dict[str, Any]:

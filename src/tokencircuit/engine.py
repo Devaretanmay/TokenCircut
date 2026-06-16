@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
@@ -26,7 +27,6 @@ from .canonicalizer import MessageCanonicalizer
 from .ledger import ToolTransactionLedger
 from .semantic_detector import SemanticStagnationDetector, StagnationAnalysis
 from .state_schema import InterventionStateSchema, default_intervention_state
-from .telemetry import MetricsCollector, get_tracer
 from .types import (
     CanonicalMessage,
     CanonicalRole,
@@ -41,12 +41,16 @@ from .validator import TranscriptValidator, ValidationResult
 logger = logging.getLogger("tokencircuit.engine")
 
 
-class _NullContextManager:
-    """No-op context manager used when OpenTelemetry is not available."""
-    def __enter__(self):
+def _get_tracer(name: str = "tokencircuit"):
+    try:
+        from opentelemetry import trace
+        return trace.get_tracer(name)
+    except ImportError:
         return None
-    def __exit__(self, *args):
-        pass
+
+
+class TokenCircuitError(RuntimeError):
+    pass
 
 
 @dataclass
@@ -55,14 +59,10 @@ class InterventionConfig:
 
     # V6 compatibility
     window_size: int = 5
-    model_name: str = "unknown"
-    telemetry_enabled: bool = True
 
     # Enterprise Features
     audit_mode: bool = False
     max_tokens_per_turn: int = 4000
-    agency_id: Optional[str] = None
-    client_id: Optional[str] = None
 
     # Stage thresholds (consecutive stagnation turns to escalate)
     nudge_threshold: int = 3
@@ -87,13 +87,13 @@ class InterventionConfig:
     # Coaching
     nudge_template: str = (
         "I notice you've been repeating a similar approach for {n_turns} turns. "
-        "The tool '{tool_name}' has returned {outcome_summary}. "
+        "{outcome_summary}. "
         "Consider a different strategy: {suggestion}"
     )
     override_template: str = (
         "SYSTEM DIRECTIVE: Your last {n_turns} attempts used the same strategy "
         "and did not make progress. You MUST abandon the current approach. "
-        "Failed tool: '{tool_name}'. Errors seen: {error_summary}. "
+        "Errors seen: {error_summary}. "
         "Required action: {directive}"
     )
 
@@ -165,7 +165,7 @@ class InterventionEngine:
         node_name: str,
     ) -> InterventionDecision:
         """Main entry point. Runs the full V7 pipeline synchronously."""
-        tracer = get_tracer()
+        tracer = _get_tracer()
         ctx_manager = (
             tracer.start_as_current_span(
                 "TokenCircuit.Intervention",
@@ -174,27 +174,16 @@ class InterventionEngine:
                     "node_name": node_name,
                     "audit_mode": self._config.audit_mode,
                 }
-            ) if tracer else _NullContextManager()
+            ) if tracer else nullcontext()
         )
         with ctx_manager as span:
             try:
                 decision = self._process_impl(messages, state, thread_id=thread_id, node_name=node_name)
 
-                metrics = MetricsCollector()
-                if decision.stage > InterventionStage.PASS:
-                    if span:
-                        span.set_attribute("intervention.stage", decision.stage.name)
-                        for sig in decision.signals:
-                            span.add_event("SignalDetected", {"signal.type": sig.value})
-                    metrics.record_intervention(
-                        stage=decision.stage.name,
-                        model=self._config.model_name,
-                        tokens_saved=decision.estimated_tokens_saved
-                    )
-
-                ts = self._thread_states.get(f"{thread_id}:{node_name}")
-                if ts and ts.last_analysis:
-                    metrics.record_stagnation_score(ts.last_analysis.similarity_score)
+                if decision.stage > InterventionStage.PASS and span:
+                    span.set_attribute("intervention.stage", decision.stage.name)
+                    for sig in decision.signals:
+                        span.add_event("SignalDetected", {"signal.type": sig.value})
 
                 return decision
             except Exception as exc:
@@ -227,7 +216,6 @@ class InterventionEngine:
 
         # ─── Step 2: Canonicalize messages ───
         canonical = ts.canonicalizer.canonicalize(list(messages))
-        raw_count = len(messages)
 
         # ─── Step 3: Validate transcript ───
         validation_result: Optional[ValidationResult] = None
@@ -245,13 +233,10 @@ class InterventionEngine:
             validation_signals = validation_result.signals
             dropped_this_turn = validation_result.dropped_call_ids
 
-        validated_count = len(canonical)
-
         # ─── Step 4: Semantic stagnation detection ───
         analysis: Optional[StagnationAnalysis] = None
         stagnation_signals: list[SignalType] = []
         similarity_score = 0.0
-        pattern_diversity = 1.0
 
         if ts.detector is not None:
             # OPTIMIZATION: Only hydrate from history if our in-memory window is empty.
@@ -262,7 +247,6 @@ class InterventionEngine:
             analysis = ts.detector.analyze(canonical, turn_number)
             stagnation_signals = analysis.signals
             similarity_score = analysis.similarity_score
-            pattern_diversity = analysis.pattern_diversity
 
             # Record fingerprint for next turn's comparison
             ts.detector.record_fingerprint(analysis.fingerprint)
@@ -311,16 +295,8 @@ class InterventionEngine:
             thread_id=thread_id,
             node_name=node_name,
             turn_number=turn_number,
-            canonical_messages=[
-                {"role": m.role.value, "content": m.content[:100]}
-                for m in canonical[-5:]  # last 5 for context, truncated
-            ],
-            raw_message_count=raw_count,
-            validated_message_count=validated_count,
             active_signals=all_signals,
             semantic_similarity_score=similarity_score,
-            pattern_diversity=pattern_diversity,
-            pending_transactions=len(ts.ledger.get_pending()),
             orphaned_transaction_ids=[t.call.call_id for t in ts.ledger.get_orphaned()],
             dropped_this_turn=dropped_this_turn,
             consecutive_empty_results=consecutive_empty,
@@ -456,7 +432,6 @@ class InterventionEngine:
 
         return self._config.nudge_template.format(
             n_turns=context.consecutive_stagnation_count,
-            tool_name="unknown",
             outcome_summary=outcome_summary,
             suggestion=suggestion,
         )
@@ -468,7 +443,6 @@ class InterventionEngine:
 
         return self._config.override_template.format(
             n_turns=context.consecutive_stagnation_count,
-            tool_name="unknown",
             error_summary=error_summary,
             directive=directive,
         )
@@ -499,9 +473,7 @@ class InterventionEngine:
             return [{"role": "system", "content": coaching}]
 
         # Convert canonical back to dicts, then append coaching
-        result: list[dict[str, Any]] = []
-        canonicalizer = MessageCanonicalizer()
-        result = canonicalizer.to_openai_format(canonical)
+        result = MessageCanonicalizer.to_openai_format(canonical)
 
         # Append coaching as a system message at the end
         result.append({"role": "system", "content": coaching})
@@ -571,8 +543,7 @@ class InterventionEngine:
                 compacted.append(msg)
 
         # Convert to dicts
-        canonicalizer = MessageCanonicalizer()
-        result = canonicalizer.to_openai_format(compacted)
+        result = MessageCanonicalizer.to_openai_format(compacted)
 
         # Add summary of compacted failures
         if failed_summary_parts:

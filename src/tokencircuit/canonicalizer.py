@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Sequence
 
@@ -19,8 +20,6 @@ _ROLE_MAP: dict[str, CanonicalRole] = {
     "function": CanonicalRole.TOOL,
 }
 
-_STRIP_PREFIXES: tuple[str, ...] = ("_tc_", "_meta_", "__")
-
 
 class MessageCanonicalizer:
     """
@@ -32,8 +31,7 @@ class MessageCanonicalizer:
     - Mixed lists of both formats
     """
 
-    def __init__(self, *, strip_prefixes: tuple[str, ...] = _STRIP_PREFIXES) -> None:
-        self._strip_prefixes = strip_prefixes
+    def __init__(self) -> None:
         # Internal cache: id(msg) -> CanonicalMessage
         # This speeds up repeated canonicalization of the same message objects
         # within a single session.
@@ -73,10 +71,6 @@ class MessageCanonicalizer:
                 )
                 result.append(err_msg)
         return result
-
-    def clear_cache(self) -> None:
-        """Clear the internal message cache."""
-        self._cache.clear()
 
     def _convert_single(self, msg: Any, index: int) -> CanonicalMessage:
         """Convert a single message (LangChain object or dict) to CanonicalMessage."""
@@ -188,8 +182,6 @@ class MessageCanonicalizer:
 
         # args might be a JSON string
         if isinstance(args, str):
-            import json
-
             try:
                 args = json.loads(args)
             except (json.JSONDecodeError, ValueError):
@@ -200,13 +192,14 @@ class MessageCanonicalizer:
 
         return {"id": str(call_id), "name": str(name), "args": args}
 
+    @staticmethod
     def to_openai_format(
-        self, messages: list[CanonicalMessage]
+        messages: list[CanonicalMessage]
     ) -> list[dict[str, Any]]:
         """Convert canonical messages back to OpenAI API format."""
         result: list[dict[str, Any]] = []
         for msg in messages:
-            d: dict[str, Any] = {"role": self._role_to_openai(msg.role)}
+            d: dict[str, Any] = {"role": MessageCanonicalizer._role_to_openai(msg.role)}
 
             if msg.content:
                 d["content"] = msg.content
@@ -221,7 +214,7 @@ class MessageCanonicalizer:
                         "function": {
                             "name": tc["name"],
                             "arguments": (
-                                __import__("json").dumps(tc["args"])
+                                json.dumps(tc["args"])
                                 if isinstance(tc["args"], dict)
                                 else str(tc["args"])
                             ),
