@@ -5,20 +5,24 @@
 [![CI](https://github.com/Devaretanmay/TokenCircut/actions/workflows/ci.yml/badge.svg)](https://github.com/Devaretanmay/TokenCircut/actions)
 [![License](https://img.shields.io/github/license/Devaretanmay/TokenCircut)](LICENSE)
 
-**Pre-model intervention engine for LLM agents.** Detects infinite loops, semantic stagnation, and runaway generation in agentic workflows — then coaches the agent to change strategy before killing the session.
+**The Agentic Pre-Frontal Cortex.**
+
+Current agent frameworks rely on blunt "Circuit Breakers" (like `recursion_limit`) that throw raw Python exceptions, destroying execution state and crashing the run when an agent loops. **TokenCircuit** is a zero-bloat, local-first SDK that intercepts the agent *before* the next LLM call, actively coaching it out of infinite loops and semantic stagnation.
+
+Instead of failing the run, TokenCircuit forces a strategy pivot, turning bounded degradation into successful task completion.
 
 Supported frameworks: **LangGraph**, **CrewAI**, **OpenAI function calling**.
 
-## How It Works
+## The Progressive Intervention Protocol
 
-TokenCircuit intercepts messages **before** they reach the LLM via LangGraph's `pre_model_hook`. It runs a multi-signal detection pipeline and decides one of four actions:
+TokenCircuit operates silently in the background, intervening progressively:
 
 | Stage | What Happens |
 |-------|-------------|
 | **PASS** | No intervention — agent proceeds normally |
-| **NUDGE** | Append a coaching message suggesting a different strategy |
-| **OVERRIDE** | Compact failed transactions + inject a forceful pivot directive |
-| **HARD_STOP** | Terminate the agent loop immediately |
+| **NUDGE** | Ephemeral system message injected: *"You have tried this 3 times. Change strategy."* |
+| **OVERRIDE** | Compacts failed transactions + injects forceful directive. Protects against OpenAI API validation errors. |
+| **HARD_STOP** | Graceful fallback termination, preserving state dictionary for debugging. |
 
 ```python
 from tokencircuit import InterventionConfig, LangGraphPreModelAdapter
