@@ -48,7 +48,6 @@ from .types import (
     CanonicalMessage,
     CanonicalRole,
     SignalType,
-    TransactionStatus,
 )
 
 logger = logging.getLogger("tokencircuit.validator")
@@ -123,12 +122,7 @@ class TranscriptValidator:
         self._strict_mode = strict_mode
         self._max_orphan_tolerance = max_orphan_tolerance
 
-        # Cumulative statistics
         self._total_validated: int = 0
-        self._total_dropped: int = 0
-        self._total_repaired: int = 0
-        self._orphans_removed: int = 0
-        self._duplicates_removed: int = 0
 
     def validate(
         self,
@@ -227,7 +221,6 @@ class TranscriptValidator:
                 if tcid in seen_result_ids:
                     dropped_indices.add(msg.source_index)
                     dropped_call_ids.append(tcid)
-                    self._duplicates_removed += 1
                     continue
                 seen_result_ids.add(tcid)
 
@@ -236,7 +229,6 @@ class TranscriptValidator:
                         dropped_indices.add(msg.source_index)
                         dropped_call_ids.append(tcid)
                         orphan_count += 1
-                        self._orphans_removed += 1
                     continue
 
                 ai_index = call_id_to_ai_index.get(tcid)
@@ -311,40 +303,8 @@ class TranscriptValidator:
             repair_actions=repair_actions,
         )
 
-    def validate_incremental(
-        self,
-        new_messages: list[CanonicalMessage],
-        turn_number: int,
-    ) -> tuple[list[CanonicalMessage], list[str]]:
-        """
-        Validate only newly added messages against the existing ledger state.
-        Used for incremental validation during streaming.
-
-        Returns:
-            (valid_messages, dropped_call_ids)
-        """
-        valid: list[CanonicalMessage] = []
-        dropped_ids: list[str] = []
-
-        for msg in new_messages:
-            if msg.role == CanonicalRole.TOOL and msg.tool_call_id:
-                txn = self._ledger.get_transaction(msg.tool_call_id)
-                if txn is None:
-                    dropped_ids.append(msg.tool_call_id)
-                    continue
-                if txn.status == TransactionStatus.COMMITTED:
-                    dropped_ids.append(msg.tool_call_id)
-                    continue
-            valid.append(msg)
-
-        return valid, dropped_ids
-
     def get_repair_summary(self) -> dict[str, int]:
         """Return cumulative repair statistics."""
         return {
             "total_validated": self._total_validated,
-            "total_dropped": self._total_dropped,
-            "total_repaired": self._total_repaired,
-            "orphans_removed": self._orphans_removed,
-            "duplicates_removed": self._duplicates_removed,
         }

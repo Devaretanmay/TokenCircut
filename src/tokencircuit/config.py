@@ -1,24 +1,12 @@
-"""Configuration loading and management for TokenCircuit."""
+"""Configuration for TokenCircuit (deprecated — use InterventionConfig instead)."""
 
-import logging
 import warnings
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .engine import InterventionConfig
-
-logger = logging.getLogger("tokencircuit")
-
-
 __all__ = [
     "TokenCircuitConfig",
-    "load_config",
-    "aload_config",
 ]
-
-SUPABASE_CONFIG_URL = (
-    "https://tokencircuit.supabase.co/rest/v1/agency_configs"
-)
 
 
 @dataclass
@@ -32,8 +20,7 @@ class TokenCircuitConfig:
 
     def __post_init__(self) -> None:
         warnings.warn(
-            "TokenCircuitConfig is deprecated and will be removed in a future release. "
-            "Use InterventionConfig instead.",
+            "TokenCircuitConfig is deprecated. Use InterventionConfig instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -41,90 +28,3 @@ class TokenCircuitConfig:
             raise ValueError("max_repeats must be >= 1")
         if self.window_size < 2:
             raise ValueError("window_size must be >= 2")
-
-
-def load_config(api_key: Optional[str] = None) -> InterventionConfig:
-    defaults = InterventionConfig(window_size=5)
-
-    if not api_key:
-        return defaults
-
-    try:
-        import httpx
-
-        resp = httpx.get(
-            SUPABASE_CONFIG_URL,
-            headers={
-                "apikey": api_key,
-                "Authorization": f"Bearer {api_key}",
-            },
-            timeout=2.0,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, list):
-            data = data[0] if len(data) > 0 else {}
-        if not isinstance(data, dict):
-            data = {}
-
-        kwargs = {}
-        if "window_size" in data:
-            kwargs["window_size"] = data["window_size"]
-        if "agency_id" in data:
-            kwargs["agency_id"] = data["agency_id"]
-        if "client_id" in data:
-            kwargs["client_id"] = data["client_id"]
-        if "max_repeats" in data:
-            kwargs["hard_stop_threshold"] = data["max_repeats"]
-
-        return InterventionConfig(**kwargs)
-    except Exception:
-        logger.warning(
-            "TokenCircuit: config fetch failed, using defaults",
-            exc_info=True,
-        )
-        return defaults
-
-
-async def aload_config(api_key: Optional[str] = None) -> InterventionConfig:
-    defaults = InterventionConfig(window_size=5)
-
-    if not api_key:
-        return defaults
-
-    try:
-        import httpx
-
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                SUPABASE_CONFIG_URL,
-                headers={
-                    "apikey": api_key,
-                    "Authorization": f"Bearer {api_key}",
-                },
-                timeout=2.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if isinstance(data, list):
-                data = data[0] if len(data) > 0 else {}
-            if not isinstance(data, dict):
-                data = {}
-
-            kwargs = {}
-            if "window_size" in data:
-                kwargs["window_size"] = data["window_size"]
-            if "agency_id" in data:
-                kwargs["agency_id"] = data["agency_id"]
-            if "client_id" in data:
-                kwargs["client_id"] = data["client_id"]
-            if "max_repeats" in data:
-                kwargs["hard_stop_threshold"] = data["max_repeats"]
-
-            return InterventionConfig(**kwargs)
-    except Exception:
-        logger.warning(
-            "TokenCircuit: async config fetch failed, using defaults",
-            exc_info=True,
-        )
-        return defaults

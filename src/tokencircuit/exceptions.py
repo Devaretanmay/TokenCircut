@@ -1,7 +1,5 @@
 """Exception hierarchy for TokenCircuit."""
 
-from typing import Optional
-
 
 class TokenCircuitError(RuntimeError):
     def __init__(
@@ -10,8 +8,8 @@ class TokenCircuitError(RuntimeError):
         signal_type: str = "",
         node_name: str = "",
         iteration: int = 0,
-        state_hashes_window: Optional[list[str]] = None,
-        tool_signatures_window: Optional[list[str]] = None,
+        state_hashes_window: list[str] | None = None,
+        tool_signatures_window: list[str] | None = None,
     ) -> None:
         super().__init__(message)
         self.signal_type = signal_type
@@ -21,16 +19,6 @@ class TokenCircuitError(RuntimeError):
         self.tool_signatures_window = tool_signatures_window or []
 
 
-class StateStagnationError(TokenCircuitError):
-    pass
-
-
-class FutileActionError(TokenCircuitError):
-    pass
-
-
 __all__ = [
     "TokenCircuitError",
-    "StateStagnationError",
-    "FutileActionError",
 ]

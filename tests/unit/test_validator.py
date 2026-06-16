@@ -454,60 +454,7 @@ class TestOrphanSignal:
 
 
 # ===========================================================================
-# 12. validate_incremental
-# ===========================================================================
-
-class TestValidateIncremental:
-    """Tests for the incremental validation path."""
-
-    def test_incremental_drops_unknown_call_id(self, validator: TranscriptValidator, ledger: ToolTransactionLedger) -> None:
-        """A tool result with no ledger entry is dropped incrementally."""
-        # Ledger is empty — no calls registered
-        new_msgs = [_tool("result", call_id="unknown", idx=10)]
-        valid, dropped = validator.validate_incremental(new_msgs, turn_number=5)
-        assert len(valid) == 0
-        assert "unknown" in dropped
-
-    def test_incremental_drops_duplicate_committed(self, validator: TranscriptValidator, ledger: ToolTransactionLedger) -> None:
-        """A tool result for an already-committed transaction is dropped."""
-        # Manually register a call and commit it
-        ledger.register_call(
-            call_id="c1", tool_name="t", arguments_hash="h",
-            arguments_type_signature="t(str)", source_message_index=0, turn_number=1,
-        )
-        ledger.register_result(
-            call_id="c1", result_hash="rh", result_content_prefix="ok",
-            result_length=2, source_message_index=1, turn_number=1,
-        )
-        new_msgs = [_tool("dup", call_id="c1", idx=5)]
-        valid, dropped = validator.validate_incremental(new_msgs, turn_number=2)
-        assert "c1" in dropped
-        assert len(valid) == 0
-
-    def test_incremental_keeps_pending_result(self, validator: TranscriptValidator, ledger: ToolTransactionLedger) -> None:
-        """A tool result for a PENDING transaction is kept."""
-        ledger.register_call(
-            call_id="c1", tool_name="t", arguments_hash="h",
-            arguments_type_signature="t(str)", source_message_index=0, turn_number=1,
-        )
-        new_msgs = [_tool("ok", call_id="c1", idx=5)]
-        valid, dropped = validator.validate_incremental(new_msgs, turn_number=2)
-        assert len(valid) == 1
-        assert dropped == []
-
-    def test_incremental_passes_non_tool_messages(self, validator: TranscriptValidator) -> None:
-        """Non-tool messages are always passed through incrementally."""
-        new_msgs = [
-            _human("hello", idx=10),
-            _ai("thinking", idx=11),
-        ]
-        valid, dropped = validator.validate_incremental(new_msgs, turn_number=3)
-        assert len(valid) == 2
-        assert dropped == []
-
-
-# ===========================================================================
-# 13. _hash_args consistency
+# 12. _hash_args consistency
 # ===========================================================================
 
 class TestHashArgs:
@@ -672,7 +619,6 @@ class TestEdgeCases:
         validator.validate(msgs, turn_number=2)
         summary = validator.get_repair_summary()
         assert summary["total_validated"] == 2
-        assert summary["duplicates_removed"] >= 2
 
     def test_extract_type_signature_dict_args(self) -> None:
         """_extract_type_signature builds 'name(type,type)' from dict args."""

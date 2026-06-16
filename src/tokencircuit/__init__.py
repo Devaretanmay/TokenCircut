@@ -6,7 +6,7 @@ from typing import Any
 from .adapters.langgraph import LangGraphPreModelAdapter
 from .canonicalizer import MessageCanonicalizer
 from .engine import InterventionConfig, InterventionEngine
-from .exceptions import FutileActionError, StateStagnationError, TokenCircuitError
+from .exceptions import TokenCircuitError
 from .ledger import ToolTransactionLedger
 from .semantic_detector import SemanticStagnationDetector
 from .state_schema import (
@@ -52,8 +52,6 @@ __all__ = [
     "instrument_langgraph",
     "instrument_crewai",
     "TokenCircuitError",
-    "StateStagnationError",
-    "FutileActionError",
 ]
 
 def instrument_langgraph(

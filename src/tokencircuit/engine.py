@@ -41,6 +41,14 @@ from .validator import TranscriptValidator, ValidationResult
 logger = logging.getLogger("tokencircuit.engine")
 
 
+class _NullContextManager:
+    """No-op context manager used when OpenTelemetry is not available."""
+    def __enter__(self):
+        return None
+    def __exit__(self, *args):
+        pass
+
+
 @dataclass
 class InterventionConfig:
     """Configuration for the V7 InterventionEngine."""
@@ -156,75 +164,49 @@ class InterventionEngine:
         thread_id: str,
         node_name: str,
     ) -> InterventionDecision:
-        """
-        Main entry point. Runs the full V7 pipeline synchronously.
-        """
+        """Main entry point. Runs the full V7 pipeline synchronously."""
         tracer = get_tracer()
-        if tracer:
-            with tracer.start_as_current_span(
+        ctx_manager = (
+            tracer.start_as_current_span(
                 "TokenCircuit.Intervention",
                 attributes={
                     "thread_id": thread_id,
                     "node_name": node_name,
                     "audit_mode": self._config.audit_mode,
                 }
-            ) as span:
-                try:
-                    decision = self._process_impl(messages, state, thread_id=thread_id, node_name=node_name)
-
-                    # Record Prometheus metrics
-                    metrics = MetricsCollector()
-                    if decision.stage > InterventionStage.PASS:
-                        span.set_attribute("intervention.stage", decision.stage.name)
-                        for sig in decision.signals:
-                            span.add_event("SignalDetected", {"signal.type": sig.value})
-                        metrics.record_intervention(
-                            stage=decision.stage.name,
-                            model=self._config.model_name,
-                            tokens_saved=decision.estimated_tokens_saved
-                        )
-
-                    # Extract stagnation score if available
-                    if self._thread_states.get(f"{thread_id}:{node_name}"):
-                        ts = self._thread_states[f"{thread_id}:{node_name}"]
-                        if ts.last_analysis:
-                            metrics.record_stagnation_score(ts.last_analysis.similarity_score)
-
-                    return decision
-                except Exception as exc:
-                    span.record_exception(exc)
-                    logger.error(
-                        "InterventionEngine.process() failed, returning PASS: %s", exc, exc_info=True
-                    )
-                    return InterventionDecision(stage=InterventionStage.PASS, signals=[], state_patch={})
-        else:
+            ) if tracer else _NullContextManager()
+        )
+        with ctx_manager as span:
             try:
                 decision = self._process_impl(messages, state, thread_id=thread_id, node_name=node_name)
 
-                # Record Prometheus metrics
                 metrics = MetricsCollector()
                 if decision.stage > InterventionStage.PASS:
+                    if span:
+                        span.set_attribute("intervention.stage", decision.stage.name)
+                        for sig in decision.signals:
+                            span.add_event("SignalDetected", {"signal.type": sig.value})
                     metrics.record_intervention(
                         stage=decision.stage.name,
                         model=self._config.model_name,
                         tokens_saved=decision.estimated_tokens_saved
                     )
-                if self._thread_states.get(f"{thread_id}:{node_name}"):
-                    ts = self._thread_states[f"{thread_id}:{node_name}"]
-                    if ts.last_analysis:
-                        metrics.record_stagnation_score(ts.last_analysis.similarity_score)
+
+                ts = self._thread_states.get(f"{thread_id}:{node_name}")
+                if ts and ts.last_analysis:
+                    metrics.record_stagnation_score(ts.last_analysis.similarity_score)
 
                 return decision
             except Exception as exc:
-                # FAIL-SAFE: Never block a working agent
+                if span:
+                    try:
+                        span.record_exception(exc)
+                    except Exception:
+                        pass
                 logger.error(
                     "InterventionEngine.process() failed, returning PASS: %s", exc, exc_info=True
                 )
-                return InterventionDecision(
-                    stage=InterventionStage.PASS,
-                    signals=[],
-                    state_patch={},
-                )
+                return InterventionDecision(stage=InterventionStage.PASS, signals=[], state_patch={})
 
     def _process_impl(
         self,
@@ -469,26 +451,24 @@ class InterventionEngine:
 
     def _generate_nudge(self, context: InterventionContext) -> str:
         """Generate a coaching message for NUDGE stage."""
-        tool_name = self._extract_repeated_tool(context)
         outcome_summary = self._summarize_outcomes(context)
         suggestion = self._suggest_alternative(context)
 
         return self._config.nudge_template.format(
             n_turns=context.consecutive_stagnation_count,
-            tool_name=tool_name,
+            tool_name="unknown",
             outcome_summary=outcome_summary,
             suggestion=suggestion,
         )
 
     def _generate_override(self, context: InterventionContext) -> str:
         """Generate a forceful directive for OVERRIDE stage."""
-        tool_name = self._extract_repeated_tool(context)
         error_summary = self._summarize_errors(context)
         directive = self._generate_directive(context)
 
         return self._config.override_template.format(
             n_turns=context.consecutive_stagnation_count,
-            tool_name=tool_name,
+            tool_name="unknown",
             error_summary=error_summary,
             directive=directive,
         )
@@ -645,9 +625,6 @@ class InterventionEngine:
         if stage > InterventionStage.PASS:
             patch["total_interventions"] = context.total_interventions + 1
             patch["last_escalation_turn"] = context.turn_number
-            failed_tool = self._extract_repeated_tool(context)
-            if failed_tool != "unknown":
-                patch["strategies_attempted"] = [failed_tool]
 
         if stage == InterventionStage.NUDGE:
             patch["nudge_count"] = context.total_interventions + 1
@@ -673,18 +650,6 @@ class InterventionEngine:
     # ─────────────────────────────────────────────────────────────────────────
     # Helpers
     # ─────────────────────────────────────────────────────────────────────────
-
-    def _extract_repeated_tool(self, context: InterventionContext) -> str:
-        """Extract the tool name that's being called repeatedly."""
-        for msg_dict in reversed(context.canonical_messages):
-            content = msg_dict.get("content", "")
-            if "CALL(" in content:
-                # From structural pattern
-                start = content.find("CALL(") + 5
-                end = content.find(")", start)
-                if end > start:
-                    return content[start:end]
-        return "unknown"
 
     def _summarize_outcomes(self, context: InterventionContext) -> str:
         """Summarize recent tool outcomes."""

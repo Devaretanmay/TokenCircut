@@ -36,23 +36,21 @@ src/tokencircuit/           # Library source
 ├── __init__.py             # Public API & instrument_langgraph/crewai
 ├── engine.py               # InterventionEngine — central orchestrator
 ├── types.py                # Core types (enums, Pydantic models, CanonicalMessage)
-├── config.py               # Remote configuration loading
+├── config.py               # Deprecated TokenCircuitConfig (use InterventionConfig)
 ├── canonicalizer.py        # MessageCanonicalizer — normalizes message formats
 ├── ledger.py               # ToolTransactionLedger — tracks tool call lifecycle
 ├── validator.py            # TranscriptValidator — enforces 10 invariants
 ├── semantic_detector.py    # SemanticStagnationDetector — n-gram Jaccard
 ├── state_schema.py         # _tc_intervention state channel & reducer
-├── telemetry.py            # OpenTelemetry integration & cost estimation
+├── telemetry.py            # OpenTelemetry tracing & Prometheus metrics
 ├── exceptions.py           # TokenCircuitError hierarchy
-├── adapters/
-│   ├── langgraph.py        # LangGraphPreModelAdapter (pre_model_hook)
-│   ├── crewai.py           # CrewAIInterventionAdapter (step_callback)
-│   └── wrapper.py          # ModelNodeWrapper (fallback for custom graphs)
-├── otel/
-│   └── hash_utils.py       # State & action fingerprinting utilities
-└── clients/                # OpenAI client wrapper (future)
+└── adapters/
+    ├── langgraph.py        # LangGraphPreModelAdapter (pre_model_hook)
+    ├── crewai.py           # CrewAIInterventionAdapter (step_callback)
+    └── wrapper.py          # ModelNodeWrapper (fallback for custom graphs)
 
 tests/                      # Test suite
+├── conftest.py             # Shared fixtures (config, engine, helpers)
 ├── unit/                   # Unit tests for each module
 ├── integration/            # End-to-end integration tests
 ├── performance/            # Benchmarks & stress tests
