@@ -5,105 +5,217 @@
 [![CI](https://github.com/Devaretanmay/TokenCircut/actions/workflows/ci.yml/badge.svg)](https://github.com/Devaretanmay/TokenCircut/actions)
 [![License](https://img.shields.io/github/license/Devaretanmay/TokenCircut)](LICENSE)
 
-Detect and interrupt infinite loops in LLM agentic workflows. Supported frameworks: LangGraph, CrewAI, OpenAI.
+**Pre-model intervention engine for LLM agents.** Detects infinite loops, semantic stagnation, and runaway generation in agentic workflows — then coaches the agent to change strategy before killing the session.
+
+Supported frameworks: **LangGraph**, **CrewAI**, **OpenAI function calling**.
+
+## How It Works
+
+TokenCircuit intercepts messages **before** they reach the LLM via LangGraph's `pre_model_hook`. It runs a multi-signal detection pipeline and decides one of four actions:
+
+| Stage | What Happens |
+|-------|-------------|
+| **PASS** | No intervention — agent proceeds normally |
+| **NUDGE** | Append a coaching message suggesting a different strategy |
+| **OVERRIDE** | Compact failed transactions + inject a forceful pivot directive |
+| **HARD_STOP** | Terminate the agent loop immediately |
 
 ```python
-from tokencircuit import instrument_langgraph
+from tokencircuit import InterventionConfig, LangGraphPreModelAdapter
 
-safe = instrument_langgraph(graph)
-async for step in safe.astream(input, config):
-    ...
+adapter = LangGraphPreModelAdapter(
+    config=InterventionConfig(
+        nudge_threshold=3,
+        override_threshold=5,
+        hard_stop_threshold=8,
+    )
+)
+
+# LangGraph pre_model_hook integration
+graph.add_node("agent", call_model, pre_model_hook=adapter.hook)
 ```
-
-If the agent loops, `TokenCircuitError` is raised. Checkpointed state preserved for inspection.
 
 ## Installation
 
 ```bash
-pip install tokencircuit
-pip install "tokencircuit[langgraph]"   # LangGraph support
-pip install "tokencircuit[crewai]"      # CrewAI support
-pip install "tokencircuit[openai]"      # OpenAI support
+pip install tokencircuit                    # Core
+pip install "tokencircuit[langgraph]"       # + LangGraph support
+pip install "tokencircuit[crewai]"          # + CrewAI support
+pip install "tokencircuit[otel]"            # + OpenTelemetry tracing
 ```
 
-Requires Python >= 3.11.
+Requires Python ≥ 3.11.
 
-## Quick start
+## Quick Start — LangGraph
 
 ```python
+from typing import Annotated
+from langgraph.graph import StateGraph, MessagesState
 from tokencircuit import (
-    TokenCircuitConfig,
-    TokenCircuitError,
-    instrument_langgraph,
+    InterventionConfig,
+    LangGraphPreModelAdapter,
+    InterventionStateSchema,
+    tc_state_reducer,
 )
 
-config = TokenCircuitConfig(max_repeats=5, window_size=5)
-safe = instrument_langgraph(graph, config=config)
+# 1. Create the adapter
+adapter = LangGraphPreModelAdapter(
+    config=InterventionConfig(
+        nudge_threshold=3,
+        override_threshold=5,
+        hard_stop_threshold=8,
+        audit_mode=False,          # Set True to monitor without intervening
+        max_tokens_per_turn=4000,  # Runaway generation detection
+    )
+)
 
-try:
-    async for step in safe.astream({"messages": [...]}, config):
-        ...
-except TokenCircuitError as e:
-    print(f"Loop detected: {e}")
-    state = graph.get_state(config)
+# 2. Define state with TokenCircuit channel
+class AgentState(MessagesState):
+    _tc_intervention: Annotated[InterventionStateSchema, tc_state_reducer]
+
+# 3. Build graph with pre_model_hook
+builder = StateGraph(AgentState)
+builder.add_node("agent", call_model, pre_model_hook=adapter.hook)
+graph = builder.compile()
+
+# 4. Run — TokenCircuit handles the rest
+async for step in graph.astream({"messages": [...]}, config):
+    print(step)
 ```
 
-## Detection signals
+## Quick Start — CrewAI
 
-Two detectors evaluate a sliding window of action fingerprints:
+```python
+from tokencircuit import instrument_crewai, InterventionConfig
 
-- **State Stagnation** — state hash and tool signature identical across N consecutive steps. Agent produces same output every time. (Priority signal.)
-- **Futile Action** — tool call signature repeats but state hash changes. Agent calls same tool, gets different results — state moves but unproductively.
-
-Detection fires within 5-10 iterations depending on how quickly the LLM settles into the loop pattern.
-
-## Architecture
-
-```
-User app → instrument_langgraph(graph) → interceptor
-  astream() yields → compute action hash + tool signature
-                  → push to ring buffer
-                  → CompositeDetector.evaluate()
-                  → raise TokenCircuitError if triggered
+config = InterventionConfig(
+    nudge_threshold=3,
+    override_threshold=5,
+    hard_stop_threshold=8,
+)
+safe_crew = instrument_crewai(crew, config=config)
+safe_crew.kickoff()  # Raises TokenCircuitError if loop detected
 ```
 
-## Why `astream` not `astream_events`
+## Detection Signals
 
-`astream` yields each step synchronously — the graph pauses between steps and waits for the consumer. Raising inside the `async for` loop stops the graph.
+Six signal types evaluate the agent's behavior:
 
-`astream_events` runs the graph in a background task. Events are fire-and-forget; the graph continues regardless of what the consumer does.
+| Signal | Description |
+|--------|-------------|
+| `STATE_STAGNATION` | Identical content hash across the sliding window |
+| `FUTILE_ACTION` | Same tool signature repeats with no progress |
+| `SEMANTIC_STAGNATION` | Paraphrased repetition detected via token n-gram Jaccard similarity |
+| `TRANSCRIPT_CORRUPTION` | Malformed tool calls or excessive orphaned results |
+| `TOOL_TRANSACTION_ORPHAN` | Tool results without matching calls |
+| `RUNAWAY_GENERATION` | Single AI turn exceeds token velocity limit |
 
-TokenCircuit only wraps `astream`. Use the unwrapped graph for `astream_events`.
+## Enterprise Features
+
+### Audit Mode
+
+Monitor interventions without mutating the agent's behavior:
+
+```python
+config = InterventionConfig(audit_mode=True)
+# Engine computes all signals and logs them, but always returns PASS
+```
+
+### Runaway Generation Detection
+
+Catch agents that dump massive garbage output:
+
+```python
+config = InterventionConfig(max_tokens_per_turn=4000)
+# Triggers immediate HARD_STOP if a single AI turn exceeds 4000 tokens
+```
+
+### OpenTelemetry Observability
+
+```bash
+pip install "tokencircuit[otel]"
+```
+
+TokenCircuit emits spans and events via `opentelemetry-api`:
+
+```
+TokenCircuit.Intervention
+  ├── thread_id: "thread_abc"
+  ├── node_name: "agent"
+  ├── audit_mode: false
+  ├── intervention.stage: "NUDGE"
+  └── SignalDetected: "SEMANTIC_STAGNATION"
+```
+
+Visualize in Datadog, Grafana, or any OTel-compatible backend.
 
 ## Configuration
 
 ```python
-config = TokenCircuitConfig(
-    max_repeats=10,
-    window_size=10,
-    model_name="gpt-4",
-    telemetry_enabled=True,
+from tokencircuit import InterventionConfig
+
+config = InterventionConfig(
+    # Escalation thresholds (consecutive stagnation turns)
+    nudge_threshold=3,        # Turns before first coaching nudge
+    override_threshold=5,     # Turns before forceful directive
+    hard_stop_threshold=8,    # Turns before termination
+
+    # Cooldown
+    cooldown_turns=2,         # Turns to wait after de-escalation
+
+    # Semantic detection
+    window_size=5,            # Sliding window for fingerprint comparison
+    similarity_threshold=0.92, # Jaccard similarity threshold
+    enable_semantic_detection=True,
+
+    # Transaction validation
+    enable_transcript_validation=True,
+    max_orphan_tolerance=2,
+    auto_repair=True,
+
+    # Enterprise
+    audit_mode=False,
+    max_tokens_per_turn=4000,
 )
 ```
 
-## Error handling
+## Error Handling
 
 ```python
 from tokencircuit import TokenCircuitError, StateStagnationError, FutileActionError
 
 try:
-    async for step in safe.astream(input, config):
+    async for step in graph.astream(input, config):
         ...
-except StateStagnationError:
-    ...  # Agent stuck producing same output
-except FutileActionError:
-    ...  # Agent calling same tool, no progress
+except TokenCircuitError as e:
+    print(f"Loop detected: {e}")
+    print(f"Signal: {e.signal_type}")
+    print(f"Node: {e.node_name}")
+    print(f"Iteration: {e.iteration}")
 ```
+
+## Architecture
+
+```
+LangGraph pre_model_hook → LangGraphPreModelAdapter
+  └── InterventionEngine.process()
+        ├── MessageCanonicalizer (normalize messages)
+        ├── TranscriptValidator (enforce 10 invariants)
+        ├── SemanticStagnationDetector (n-gram Jaccard)
+        ├── Runaway Generation Check (token velocity)
+        ├── Signal Aggregation
+        └── decide() → PASS | NUDGE | OVERRIDE | HARD_STOP
+```
+
+- **Stateless**: Validators rebuild state from the transcript every turn
+- **O(N)**: Intelligent caching avoids O(N²) transcript reprocessing
+- **< 4ms P99**: Full pipeline latency under 4ms for 50-turn transcripts
+- **Thread-safe**: Independent state per thread_id + node_name
 
 ## Development
 
 ```bash
-pip install -e ".[dev,langgraph,openai]"
+pip install -e ".[dev,langgraph,openai,otel]"
 make check
 ```
 

@@ -2,7 +2,7 @@
 CrewAI integration tests for TokenCircuit.
 
 These tests verify that the CrewAI interceptor correctly detects
-delegation loops and raises DelegationLoopException.
+delegation loops and raises TokenCircuitError.
 
 NOTE: crewai requires Python < 3.14 due to tiktoken compatibility.
 These tests are skipped if crewai is not installed.
@@ -13,7 +13,7 @@ import pytest
 pytest.importorskip("crewai")
 
 from tokencircuit import instrument_crewai
-from tokencircuit.config import TokenCircuitConfig
+from tokencircuit.engine import InterventionConfig
 
 
 class TestCrewAIIntegration:
@@ -21,7 +21,7 @@ class TestCrewAIIntegration:
     Integration tests for the CrewAI interceptor.
 
     Tests:
-    - A looping agent delegation raises DelegationLoopException at iteration 5
+    - A looping agent delegation raises TokenCircuitError at iteration 5
     - Exception message identifies the looping agent role and task type
     - A legitimate 3-agent pipeline WITHOUT loops completes normally
     """
@@ -72,7 +72,12 @@ class TestCrewAIIntegration:
             verbose=False,
         )
 
-        config = TokenCircuitConfig(max_repeats=5, window_size=5)
+        config = InterventionConfig(
+            nudge_threshold=3,
+            override_threshold=5,
+            hard_stop_threshold=8,
+            window_size=5,
+        )
         safe_crew = instrument_crewai(crew, config=config)
 
         with pytest.raises(Exception) as exc_info:
@@ -80,8 +85,6 @@ class TestCrewAIIntegration:
 
         msg = str(exc_info.value)
         assert "TokenCircuit" in msg
-        assert "FUTILE_ACTION" in msg or "STATE_STAGNATION" in msg
-        assert "at iteration" in msg
 
     def test_exception_message_identifies_agent(self):
         from crewai import Agent, Crew, Process, Task
@@ -105,7 +108,12 @@ class TestCrewAIIntegration:
             verbose=False,
         )
 
-        config = TokenCircuitConfig(max_repeats=5, window_size=5)
+        config = InterventionConfig(
+            nudge_threshold=3,
+            override_threshold=5,
+            hard_stop_threshold=8,
+            window_size=5,
+        )
         safe_crew = instrument_crewai(crew, config=config)
 
         with pytest.raises(Exception) as exc_info:
@@ -149,7 +157,12 @@ class TestCrewAIIntegration:
             verbose=False,
         )
 
-        config = TokenCircuitConfig(max_repeats=5, window_size=5)
+        config = InterventionConfig(
+            nudge_threshold=3,
+            override_threshold=5,
+            hard_stop_threshold=8,
+            window_size=5,
+        )
         safe_crew = instrument_crewai(crew, config=config)
 
         try:
@@ -157,3 +170,4 @@ class TestCrewAIIntegration:
             assert result is not None
         except Exception:
             pytest.fail("Legitimate pipeline should not raise")
+

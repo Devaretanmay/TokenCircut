@@ -3,11 +3,11 @@
 ## Setup
 
 ```bash
-git clone https://github.com/your-org/tokencircuit
-cd tokencircuit
+git clone https://github.com/Devaretanmay/TokenCircut
+cd TokenCircut
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev,langgraph,openai]"
+pip install -e ".[dev,langgraph,openai,otel]"
 ```
 
 ## Development
@@ -29,36 +29,45 @@ make typecheck
 make lint
 ```
 
-## Project structure
+## Project Structure
 
 ```
-src/tokencircuit/       # Library source
-├── config.py           # Configuration
-├── detectors/          # Loop detection logic
-├── interceptors/       # Framework wrappers
-├── clients/            # OpenAI client wrapper
-├── otel/               # Hashing utilities
-├── ring_buffer.py      # Sliding window
-├── telemetry.py        # Cost tracking
-└── exceptions.py       # Error types
+src/tokencircuit/           # Library source
+├── __init__.py             # Public API & instrument_langgraph/crewai
+├── engine.py               # InterventionEngine — central orchestrator
+├── types.py                # Core types (enums, Pydantic models, CanonicalMessage)
+├── config.py               # Remote configuration loading
+├── canonicalizer.py        # MessageCanonicalizer — normalizes message formats
+├── ledger.py               # ToolTransactionLedger — tracks tool call lifecycle
+├── validator.py            # TranscriptValidator — enforces 10 invariants
+├── semantic_detector.py    # SemanticStagnationDetector — n-gram Jaccard
+├── state_schema.py         # _tc_intervention state channel & reducer
+├── telemetry.py            # OpenTelemetry integration & cost estimation
+├── exceptions.py           # TokenCircuitError hierarchy
+├── adapters/
+│   ├── langgraph.py        # LangGraphPreModelAdapter (pre_model_hook)
+│   ├── crewai.py           # CrewAIInterventionAdapter (step_callback)
+│   └── wrapper.py          # ModelNodeWrapper (fallback for custom graphs)
+├── otel/
+│   └── hash_utils.py       # State & action fingerprinting utilities
+└── clients/                # OpenAI client wrapper (future)
 
-tests/                  # Test suite
-├── unit/               # Unit tests
-├── integration/        # Integration tests
-├── performance/        # Benchmarks
-└── security/           # Security tests
-
-control-plane/          # Next.js dashboard (optional)
+tests/                      # Test suite
+├── unit/                   # Unit tests for each module
+├── integration/            # End-to-end integration tests
+├── performance/            # Benchmarks & stress tests
+└── security/               # Security edge function tests
 ```
 
-## Code style
+## Code Style
 
 - Ruff with default rules
 - Line length: 88
 - Python 3.11+ type annotations
 - No comments on obvious code
+- `from __future__ import annotations` in all modules
 
-## Pull request process
+## Pull Request Process
 
 1. Open an issue first (bug or feature)
 2. Fork and create a feature branch
@@ -67,6 +76,6 @@ control-plane/          # Next.js dashboard (optional)
 5. Update CHANGELOG.md
 6. Submit PR
 
-## Release process
+## Release Process
 
 Maintainers cut releases via GitHub Releases. Publishing to PyPI is automated.
