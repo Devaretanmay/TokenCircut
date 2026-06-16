@@ -1,1 +1,0 @@
-/Users/tanmaydevare/.opencode/plugins/ponytail/.opencode/plugins/ponytail.mjs
