@@ -23,7 +23,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
-from .budget import BudgetEnforcer, BudgetExceededError
+from .budget import BudgetEnforcer
 from .canonicalizer import MessageCanonicalizer
 from .ledger import ToolTransactionLedger
 from .semantic_detector import SemanticStagnationDetector, StagnationAnalysis

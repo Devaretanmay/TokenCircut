@@ -6,19 +6,18 @@ heavy pipeline components (SemanticStagnationDetector, TranscriptValidator, etc.
 """
 from __future__ import annotations
 
-import sys
-from unittest.mock import MagicMock, patch
-
 import pytest
 
+from tokencircuit.engine import (
+    InterventionConfig,
+    InterventionEngine,
+    _stage_str_to_int,
+)
 from tokencircuit.types import (
     InterventionContext,
-    InterventionDecision,
     InterventionStage,
     SignalType,
 )
-from tokencircuit.engine import InterventionConfig, InterventionEngine, _stage_str_to_int
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures
@@ -105,24 +104,24 @@ class TestInterventionConfigValidation:
 
     def test_config_override_must_exceed_nudge(self):
         """override_threshold must be strictly > nudge_threshold."""
-        with pytest.raises(ValueError, match="override_threshold must be > nudge_threshold"):
+        with pytest.raises(ValueError, match="override_threshold must be > nudge_threshold"):  # noqa: E501
             InterventionConfig(nudge_threshold=3, override_threshold=3)
 
     def test_config_override_below_nudge_raises(self):
         """override_threshold below nudge_threshold should raise."""
-        with pytest.raises(ValueError, match="override_threshold must be > nudge_threshold"):
+        with pytest.raises(ValueError, match="override_threshold must be > nudge_threshold"):  # noqa: E501
             InterventionConfig(nudge_threshold=5, override_threshold=3)
 
     def test_config_hard_stop_must_exceed_override(self):
         """hard_stop_threshold must be strictly > override_threshold."""
-        with pytest.raises(ValueError, match="hard_stop_threshold must be > override_threshold"):
+        with pytest.raises(ValueError, match="hard_stop_threshold must be > override_threshold"):  # noqa: E501
             InterventionConfig(
                 nudge_threshold=1, override_threshold=2, hard_stop_threshold=2
             )
 
     def test_config_hard_stop_below_override_raises(self):
         """hard_stop_threshold below override_threshold should raise."""
-        with pytest.raises(ValueError, match="hard_stop_threshold must be > override_threshold"):
+        with pytest.raises(ValueError, match="hard_stop_threshold must be > override_threshold"):  # noqa: E501
             InterventionConfig(
                 nudge_threshold=1, override_threshold=3, hard_stop_threshold=2
             )
@@ -197,7 +196,8 @@ class TestDeescalation:
         )
         decision = engine.decide(ctx)
         assert decision.stage == InterventionStage.PASS
-        assert decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns
+        expected_cooldown = engine.config.cooldown_turns
+        assert decision.state_patch["cooldown_remaining"] == expected_cooldown
 
     def test_deescalation_from_override_sets_cooldown(self, engine: InterventionEngine):
         """De-escalating from OVERRIDE should also set cooldown."""
@@ -206,16 +206,16 @@ class TestDeescalation:
             current_stage=InterventionStage.OVERRIDE,
         )
         decision = engine.decide(ctx)
-        assert decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns
+        assert decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns  # noqa: E501
 
-    def test_deescalation_from_hard_stop_sets_cooldown(self, engine: InterventionEngine):
+    def test_deescalation_from_hard_stop_sets_cooldown(self, engine: InterventionEngine):  # noqa: E501
         """De-escalating from HARD_STOP should set cooldown."""
         ctx = _make_context(
             active_signals=[],
             current_stage=InterventionStage.HARD_STOP,
         )
         decision = engine.decide(ctx)
-        assert decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns
+        assert decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns  # noqa: E501
 
     def test_deescalation_from_pass_no_cooldown(self, engine: InterventionEngine):
         """When already PASS and no signals, cooldown should remain 0."""
@@ -615,7 +615,8 @@ class TestCoachingMessages:
         )
         decision = low_engine.decide(ctx)
         # The default template includes "for {n_turns} turns"
-        assert "1 turns" in decision.coaching_message or "1 turn" in decision.coaching_message
+        msg = decision.coaching_message
+        assert "1 turns" in msg or "1 turn" in msg
 
     def test_override_has_coaching_message(self, low_engine: InterventionEngine):
         """OVERRIDE decision must populate coaching_message."""
@@ -729,7 +730,10 @@ class TestStageStrToInt:
 
     @pytest.mark.parametrize(
         "input_str",
-        ["PASS", "Pass", "NUDGE", "Nudge", "OVERRIDE", "Override", "HARD_STOP", "Hard_Stop"],
+        [
+            "PASS", "Pass", "NUDGE", "Nudge",
+            "OVERRIDE", "Override", "HARD_STOP", "Hard_Stop",
+        ],
     )
     def test_case_insensitive(self, input_str: str):
         """Mapping is case-insensitive."""
@@ -770,7 +774,9 @@ class TestToolCallsSignature:
             {"name": "alpha", "args": {"y": "hi"}},
             {"name": "beta", "args": {"x": 1}},
         ]
-        assert InterventionEngine._tool_calls_signature(tc_a) == InterventionEngine._tool_calls_signature(tc_b)
+        sig_a = InterventionEngine._tool_calls_signature(tc_a)
+        sig_b = InterventionEngine._tool_calls_signature(tc_b)
+        assert sig_a == sig_b
 
     def test_different_args_different_types_produce_different_signatures(self):
         """Calls with the same name but different arg types produce different sigs."""
@@ -946,7 +952,8 @@ class TestEdgeCases:
             dropped_this_turn=["call_001", "call_002"],
         )
         decision = engine.decide(ctx)
-        assert decision.state_patch.get("dropped_this_session") == ["call_001", "call_002"]
+        patch = decision.state_patch
+        assert patch.get("dropped_this_session") == ["call_001", "call_002"]
 
     def test_coaching_message_truncated_in_patch(self, low_engine: InterventionEngine):
         """Coaching message in patch is capped at 500 chars."""

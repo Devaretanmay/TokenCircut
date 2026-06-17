@@ -1,7 +1,7 @@
 # TokenCircuit
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Devaretanmay/TokenCircut/main/docs/logo.png" alt="TokenCircuit Logo" width="200"/>
+  <img src="docs/assets/logo.png" alt="TokenCircuit Logo" width="200"/>
 </p>
 
 <p align="center">
@@ -31,46 +31,49 @@ Current agent frameworks rely on blunt "Circuit Breakers" (like `recursion_limit
 
 ## Key Features
 
-*   **Progressive Intervention**: Escalates from a Nudge (system message) to an Override (transcript surgery) before a Hard Stop.
-*   **Atomic Transcript Surgery**: Surgically removes failing tool-call transactions to prevent LLM API validation errors.
-*   **Semantic Loop Detection**: Zero-dependency shingle-based detection to catch paraphrased loops.
-*   **Budget Enforcement**: Local USD-denominated budget tracking to prevent runaway costs.
-*   **Zero-Trust Privacy**: Runs 100% locally in your RAM. No telemetry of prompts or data.
+*   🧠 **Progressive Intervention**: Escalates from a *Nudge* (soft prompt injection) to an *Override* (surgical transcript surgery) before a *Hard Stop*.
+*   🔪 **Atomic Transcript Surgery**: Surgically removes failing tool-call transactions to prevent LLM API validation errors (400 Bad Request).
+*   🔍 **Semantic Loop Detection**: Zero-dependency shingle-based detection via `tiktoken` to catch paraphrased loops without external embedding models.
+*   💰 **Budget Enforcement**: Local USD-denominated budget tracking and enforcement to prevent the "Tuesday Morning $4k Bill".
+*   🔒 **Zero-Trust Privacy**: Runs 100% locally in your RAM. No telemetry of prompts, outputs, or private data.
 
 ## Quick Start
 
-TokenCircuit integrates with your existing graphs with exactly **one line of code**.
+TokenCircuit integrates with your existing LangGraph builder with exactly **one line of code**.
 
 ```python
 from tokencircuit import instrument_langgraph, InterventionConfig
 
-# Secure your graph with auto-recovery and a budget
+# Configure safety thresholds and budget
 config = InterventionConfig(
     max_budget_usd=0.50, 
     auto_recovery=True
 )
 
-# Instrument the builder before compiling
-safe_graph = instrument_langgraph(builder, config=config).compile()
+# Instrument your graph builder
+instrument_langgraph(builder, config=config)
+
+# Compile and run as normal
+graph = builder.compile()
 ```
 
 ## Supported Frameworks
 
-*   **LangGraph**: Native `pre_model_hook` integration.
+*   **LangGraph**: Native `pre_model_hook` integration for deep safety.
 *   **CrewAI**: Execution hook support for proactive intervention.
-*   **OpenAI**: Standard function calling wrappers.
+*   **OpenAI**: Standard function calling wrappers for raw LLM usage.
 
 ## Installation
 
 ```bash
-pip install tokencircuit                    # Core
-pip install "tokencircuit[langgraph]"       # + LangGraph support
-pip install "tokencircuit[crewai]"          # + CrewAI support
+pip install tokencircuit                    # Core engine
+pip install "tokencircuit[langgraph]"       # + LangGraph adapter
+pip install "tokencircuit[crewai]"          # + CrewAI adapter
 ```
 
 ## Fleet Dashboard (Coming Soon)
 
-A single pane of glass to monitor agentic reliability across your entire fleet.
+A single pane of glass to monitor agentic reliability, tokens saved, and intervention logs across your entire fleet.
 
 ---
 

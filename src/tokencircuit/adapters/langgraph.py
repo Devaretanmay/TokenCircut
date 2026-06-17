@@ -14,7 +14,7 @@ the LLM call but never writes them to the checkpointed state.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, Sequence
 
 from ..engine import InterventionConfig, InterventionEngine
 from ..state_schema import InterventionStateSchema, tc_state_reducer
@@ -79,7 +79,7 @@ class LangGraphPreModelAdapter:
         self,
         *,
         node_name: str,
-    ) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    ) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
         """
         Factory creating a pre_model_hook bound to a specific node name.
 

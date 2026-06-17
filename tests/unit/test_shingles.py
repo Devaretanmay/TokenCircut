@@ -13,7 +13,6 @@ from tokencircuit.semantic_detector import (
 )
 from tokencircuit.types import CanonicalMessage, CanonicalRole
 
-
 # ── _compute_shingles ─────────────────────────────────────────────────────────
 
 
@@ -60,7 +59,7 @@ class TestComputeShingles:
         assert (98, 99) in result
 
     def test_trigram_uses_zip_optimization(self) -> None:
-        """n=3 path uses zip(tokens, tokens[1:], tokens[2:]), verify via a larger sequence."""
+        """n=3 path uses zip(tokens, tokens[1:], tokens[2:]), verify via a larger sequence."""  # noqa: E501
         tokens = list(range(50))
         result = _compute_shingles(tokens, 3)
         assert len(result) == 48
@@ -74,7 +73,7 @@ class TestComputeShingles:
         assert result == frozenset({(1, 2, 3, 4), (2, 3, 4, 5)})
 
     def test_duplicate_tokens_produce_fewer_shingles(self) -> None:
-        """Repeated tokens can create duplicate shingles, frozenset deduplicates them."""
+        """Repeated tokens can create duplicate shingles, frozenset deduplicates them."""  # noqa: E501
         tokens = [1, 1, 1, 1]
         result = _compute_shingles(tokens, 2)
         # All bigrams are (1,1) → only one unique shingle
@@ -332,7 +331,7 @@ class TestSemanticStagnationDetectorValidation:
 
     def test_weights_not_summing_to_one_raises(self) -> None:
         """bigram_weight + trigram_weight != 1.0 must raise ValueError."""
-        with pytest.raises(ValueError, match="bigram_weight \\+ trigram_weight must equal 1.0"):
+        with pytest.raises(ValueError, match="bigram_weight \\+ trigram_weight must equal 1.0"):  # noqa: E501
             SemanticStagnationDetector(bigram_weight=0.3, trigram_weight=0.3)
 
     def test_weights_summing_to_one_is_valid(self) -> None:

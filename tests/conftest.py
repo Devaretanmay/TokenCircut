@@ -8,8 +8,6 @@ from tokencircuit.engine import InterventionConfig, InterventionEngine
 from tokencircuit.types import (
     CanonicalMessage,
     CanonicalRole,
-    InterventionStage,
-    SignalType,
 )
 
 

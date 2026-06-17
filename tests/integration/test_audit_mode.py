@@ -2,13 +2,15 @@ import pytest
 
 pytest.importorskip("langgraph")
 
-from langgraph.graph import StateGraph, START, END
+from typing import Annotated, TypedDict
+
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from langchain_core.messages import AIMessage, ToolMessage, HumanMessage, BaseMessage
-from typing import TypedDict, Annotated
 
 from tokencircuit import InterventionConfig
 from tokencircuit.state_schema import InterventionStateSchema, tc_state_reducer
+
 
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
@@ -17,19 +19,21 @@ class AgentState(TypedDict):
 async def stub_llm(state: AgentState):
     msg = AIMessage(
         content="",
-        tool_calls=[{"name": "fetch_weather", "args": {"location": "San Francisco"}, "id": "call_1", "type": "tool_call"}]
+        tool_calls=[{"name": "fetch_weather", "args": {"location": "San Francisco"}, "id": "call_1", "type": "tool_call"}]  # noqa: E501
     )
     return {"messages": [msg]}
 
 async def fetch_weather_tool(state: AgentState):
     last_message = state["messages"][-1]
-    responses = [ToolMessage(content="Error: Timeout.", name=tc["name"], tool_call_id=tc["id"]) for tc in last_message.tool_calls]
+    responses = [ToolMessage(content="Error: Timeout.", name=tc["name"], tool_call_id=tc["id"]) for tc in last_message.tool_calls]  # noqa: E501
     return {"messages": responses}
 
 def should_continue(state: AgentState):
     last_message = state["messages"][-1]
-    if isinstance(last_message, AIMessage) and not last_message.tool_calls: return END
-    if isinstance(last_message, ToolMessage): return "llm"
+    if isinstance(last_message, AIMessage) and not last_message.tool_calls:
+        return END
+    if isinstance(last_message, ToolMessage):
+        return "llm"
     return "tool"
 
 @pytest.mark.asyncio
@@ -46,7 +50,7 @@ async def test_audit_mode_prevents_intervention():
     adapter = LangGraphPreModelAdapter(config=config)
 
     builder = StateGraph(AgentState)
-    builder.add_node("llm", stub_llm, pre_model_hook=adapter.create_hook(node_name="llm"))
+    builder.add_node("llm", stub_llm, pre_model_hook=adapter.create_hook(node_name="llm"))  # noqa: E501
     builder.add_node("tool", fetch_weather_tool)
     builder.add_edge(START, "llm")
     builder.add_conditional_edges("llm", should_continue)
@@ -54,7 +58,7 @@ async def test_audit_mode_prevents_intervention():
 
     graph = builder.compile()
 
-    state = {"messages": [HumanMessage(content="What is the weather?")], "_tc_intervention": {}}
+    state = {"messages": [HumanMessage(content="What is the weather?")], "_tc_intervention": {}}  # noqa: E501
     run_config = {"configurable": {"thread_id": "audit_1"}}
 
     turns = 0
@@ -67,4 +71,4 @@ async def test_audit_mode_prevents_intervention():
     except Exception as e:
         pytest.fail(f"Audit mode failed to prevent exception: {e}")
 
-    assert turns >= 10, "Agent did not loop as expected, suggesting intervention mutated the flow"
+    assert turns >= 10, "Agent did not loop as expected, suggesting intervention mutated the flow"  # noqa: E501

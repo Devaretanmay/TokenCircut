@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import patch
 
 import pytest
 
@@ -16,7 +15,6 @@ from tokencircuit.types import (
     TransactionOutcome,
     TransactionStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -111,7 +109,7 @@ class TestRegisterCall:
 
     # 2. Duplicate call_id is idempotent
     def test_duplicate_call_id_is_idempotent(self, ledger: ToolTransactionLedger):
-        """Re-registering the same call_id must return the existing transaction unchanged."""
+        """Re-registering the same call_id must return existing transaction."""
         txn1 = _register_call(ledger, call_id="dup")
         txn2 = _register_call(ledger, call_id="dup")
         assert txn1 is txn2
@@ -296,7 +294,7 @@ class TestQueryHelpers:
         assert orphaned[0].call.call_id == "c1"
 
     def test_get_committed_since_filters_by_turn(self, ledger: ToolTransactionLedger):
-        """get_committed_since(turn) should only return commits at or after that turn."""
+        """get_committed_since(turn) should only return commits since that turn."""
         _register_call(ledger, call_id="c1", turn=0)
         _register_result(ledger, call_id="c1", turn=1)
         _register_call(ledger, call_id="c2", turn=2)
@@ -452,7 +450,8 @@ class TestOutcomeClassification:
     )
     def test_transient_error_patterns(self, content: str):
         """Content matching transient error patterns should be TRANSIENT_ERROR."""
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.TRANSIENT_ERROR
+        outcome = _classify_outcome(content, len(content))
+        assert outcome == TransactionOutcome.TRANSIENT_ERROR
 
     @pytest.mark.parametrize(
         "content",
@@ -485,7 +484,7 @@ class TestOutcomeClassification:
     )
     def test_permanent_error_patterns(self, content: str):
         """Content matching permanent error patterns should be PERMANENT_ERROR."""
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR
+        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR  # noqa: E501
 
     @pytest.mark.parametrize(
         "content",
@@ -502,7 +501,7 @@ class TestOutcomeClassification:
     )
     def test_generic_error_patterns(self, content: str):
         """Generic error patterns (that aren't transient) should be PERMANENT_ERROR."""
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR
+        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR  # noqa: E501
 
     @pytest.mark.parametrize(
         "content",
@@ -522,7 +521,7 @@ class TestOutcomeClassification:
         """If content matches both transient and permanent patterns, transient wins."""
         # Contains both "timeout" (transient) and "not found" (permanent)
         content = "timeout while checking not found resource"
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.TRANSIENT_ERROR
+        assert _classify_outcome(content, len(content)) == TransactionOutcome.TRANSIENT_ERROR  # noqa: E501
 
 
 # =========================================================================
@@ -561,8 +560,8 @@ class TestClassifyOutcomeCaching:
         _classify_outcome_cached.cache_clear()
         a = "a" * 200
         b = "b" * 200
-        r1 = _classify_outcome(a, 200)
-        r2 = _classify_outcome(b, 200)
+        _classify_outcome(a, 200)
+        _classify_outcome(b, 200)
         # Both SUCCESS but should be separate cache entries
         info = _classify_outcome_cached.cache_info()
         assert info.misses >= 2
@@ -691,7 +690,7 @@ class TestEdgeCases:
     """Tests for boundary conditions and edge cases."""
 
     def test_very_long_content_classification(self):
-        """Very long content should be classified correctly (only first 1000 chars hashed)."""
+        """Very long content should be classified correctly (only first 1000 chars hashed)."""  # noqa: E501
         # 10K of harmless text → SUCCESS
         long_content = "x" * 10_000
         assert _classify_outcome(long_content, 10_000) == TransactionOutcome.SUCCESS
@@ -699,15 +698,15 @@ class TestEdgeCases:
     def test_very_long_content_with_error_at_start(self):
         """Error at the start of long content should be detected."""
         content = "Error: something broke" + "x" * 10_000
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR
+        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR  # noqa: E501
 
     def test_very_long_content_with_transient_error_at_start(self):
         """Transient error at the start of long content should be detected."""
         content = "timeout occurred" + "x" * 10_000
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.TRANSIENT_ERROR
+        assert _classify_outcome(content, len(content)) == TransactionOutcome.TRANSIENT_ERROR  # noqa: E501
 
     def test_content_with_mixed_error_patterns(self):
-        """Content with both transient and permanent patterns; transient first check wins."""
+        """Content with both transient and permanent patterns; transient first check wins."""  # noqa: E501
         content = "connection error and also 404 not found"
         result = _classify_outcome(content, len(content))
         # "connection error" is transient → checked first → TRANSIENT_ERROR

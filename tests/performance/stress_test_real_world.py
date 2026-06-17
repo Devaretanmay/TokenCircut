@@ -13,7 +13,6 @@ isolating TokenCircuit's detection from network flakiness and cost.
 import asyncio
 import json
 import logging
-import os
 import sys
 import time
 
@@ -21,9 +20,7 @@ from tokencircuit.engine import InterventionConfig, InterventionEngine
 from tokencircuit.types import (
     CanonicalMessage,
     CanonicalRole,
-    InterventionContext,
     InterventionStage,
-    SignalType,
 )
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -135,12 +132,12 @@ def run_scenario_1() -> dict:
 
         if decision.should_terminate:
             interrupted_at = step
-            signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"
+            signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"  # noqa: E501
             break
 
         if decision.stage > InterventionStage.PASS:
             if interrupted_at == 0:
-                signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"
+                signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"  # noqa: E501
 
     if interrupted_at == 0:
         interrupted_at = step  # noqa: F821
@@ -212,7 +209,7 @@ def run_scenario_2() -> dict:
                     args={"product_id": "X-200"},
                     call_id=f"call_pricing_{i}",
                     ai_content="Let me fetch the pricing for product X-200.",
-                    tool_result=json.dumps({"status": "rate_limited", "retry_after": 60}),
+                    tool_result=json.dumps({"status": "rate_limited", "retry_after": 60}),  # noqa: E501
                 )
             )
 
@@ -234,7 +231,7 @@ def run_scenario_2() -> dict:
             break
 
         if decision.stage > InterventionStage.PASS and interrupted_at == 0:
-            signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"
+            signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"  # noqa: E501
 
     if interrupted_at == 0:
         interrupted_at = step  # noqa: F821
@@ -270,8 +267,10 @@ def run_scenario_2() -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_scenario_3() -> dict:
-    """Simulates an agent whose tool always returns {\"summary\": null, \"status\": \"processing\"}.
+    """Simulates an agent whose tool always returns
+    {"summary": null, "status": "processing"}.
     The AI content is near-identical each turn.
+
 
     Expected: STATE_STAGNATION or SEMANTIC_STAGNATION detected within 5-8 turns.
     """
@@ -328,7 +327,7 @@ def run_scenario_3() -> dict:
             break
 
         if decision.stage > InterventionStage.PASS and interrupted_at == 0:
-            signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"
+            signal_type = ", ".join(s.value for s in decision.signals) if decision.signals else "UNKNOWN"  # noqa: E501
 
     if interrupted_at == 0:
         interrupted_at = step  # noqa: F821
@@ -377,8 +376,6 @@ async def run_concurrent_stress() -> dict:
         window_size=5,
     )
     engine = InterventionEngine(config=config)
-
-    results = {}
 
     async def run_agent(agent_id: int) -> tuple[int, bool, str]:
         """Simulate one looping agent."""
@@ -429,7 +426,7 @@ async def run_concurrent_stress() -> dict:
         "scenario": "Concurrent 50 Agents",
         "total_agents": 50,
         "terminated": terminated,
-        "termination_stages": dict(zip(*__import__("numpy", fromlist=["unique"]).unique(stages, return_counts=True))) if False else {s: stages.count(s) for s in set(stages)},
+        "termination_stages": dict(zip(*__import__("numpy", fromlist=["unique"]).unique(stages, return_counts=True))) if False else {s: stages.count(s) for s in set(stages)},  # noqa: E501
         "elapsed_seconds": round(elapsed, 3),
         "pass": terminated == 50,
     }
@@ -483,4 +480,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-"""

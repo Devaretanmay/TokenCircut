@@ -5,13 +5,12 @@ from __future__ import annotations
 import pytest
 
 from tokencircuit.state_schema import (
-    InterventionStateSchema,
     _COUNTER_FIELDS,
     _LIST_FIELDS,
+    InterventionStateSchema,
     default_intervention_state,
     tc_state_reducer,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -28,39 +27,39 @@ def default_state() -> InterventionStateSchema:
 class TestDefaultInterventionState:
     """Verify default_intervention_state() returns correct initial values."""
 
-    def test_default_stage_is_pass(self, default_state: InterventionStateSchema) -> None:
+    def test_default_stage_is_pass(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """current_stage should default to 'pass'."""
         assert default_state["current_stage"] == "pass"
 
-    def test_default_previous_stage_is_pass(self, default_state: InterventionStateSchema) -> None:
+    def test_default_previous_stage_is_pass(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """previous_stage should default to 'pass'."""
         assert default_state["previous_stage"] == "pass"
 
-    def test_default_counters_are_zero(self, default_state: InterventionStateSchema) -> None:
+    def test_default_counters_are_zero(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """All counter fields should default to 0."""
         for field in _COUNTER_FIELDS:
             assert default_state[field] == 0, f"{field} should be 0"
 
-    def test_default_lists_are_empty(self, default_state: InterventionStateSchema) -> None:
+    def test_default_lists_are_empty(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """All list fields should default to empty lists."""
         for field in _LIST_FIELDS:
             assert default_state[field] == [], f"{field} should be []"
 
-    def test_default_similarity_score_is_zero(self, default_state: InterventionStateSchema) -> None:
+    def test_default_similarity_score_is_zero(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """last_similarity_score should default to 0.0."""
         assert default_state["last_similarity_score"] == 0.0
 
-    def test_default_coaching_message_is_empty(self, default_state: InterventionStateSchema) -> None:
+    def test_default_coaching_message_is_empty(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """last_coaching_message should default to empty string."""
         assert default_state["last_coaching_message"] == ""
 
-    def test_default_cooldown_fields_are_zero(self, default_state: InterventionStateSchema) -> None:
+    def test_default_cooldown_fields_are_zero(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """Cooldown-related fields should default to 0."""
         assert default_state["cooldown_remaining"] == 0
         assert default_state["last_escalation_turn"] == 0
         assert default_state["last_deescalation_turn"] == 0
 
-    def test_default_returns_typed_dict(self, default_state: InterventionStateSchema) -> None:
+    def test_default_returns_typed_dict(self, default_state: InterventionStateSchema) -> None:  # noqa: E501
         """Return value must be a dict (TypedDict is a dict at runtime)."""
         assert isinstance(default_state, dict)
 
@@ -72,7 +71,7 @@ class TestReducerNoneExisting:
     """When existing is None, reducer creates defaults then applies the update."""
 
     def test_none_existing_returns_defaults_with_update(self) -> None:
-        """Passing None as existing should start from defaults, then apply the update."""
+        """Passing None as existing should start from defaults, then apply the update."""  # noqa: E501
         result = tc_state_reducer(None, {"current_stage": "nudge"})
         assert result["current_stage"] == "nudge"
         # Other fields should be default values
@@ -114,13 +113,13 @@ class TestReducerListFields:
         self, default_state: InterventionStateSchema
     ) -> None:
         """Duplicates *within* the update list itself are also collapsed."""
-        result = tc_state_reducer(default_state, {"strategies_attempted": ["x", "x", "y"]})
+        result = tc_state_reducer(default_state, {"strategies_attempted": ["x", "x", "y"]})  # noqa: E501
         assert result["strategies_attempted"] == ["x", "y"]
 
     def test_list_dedup_preserves_first_occurrence_order(
         self, default_state: InterventionStateSchema
     ) -> None:
-        """Deduplication should keep the first occurrence order: existing first, then new."""
+        """Deduplication should keep the first occurrence order: existing first, then new."""  # noqa: E501
         state = tc_state_reducer(default_state, {"coaching_history": ["c", "a", "b"]})
         result = tc_state_reducer(state, {"coaching_history": ["b", "d", "a"]})
         # existing=[c, a, b] + update=[b, d, a] → dedup keeping order → [c, a, b, d]

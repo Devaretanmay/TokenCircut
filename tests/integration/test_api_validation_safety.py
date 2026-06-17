@@ -14,16 +14,15 @@ APIs perform server-side before processing a chat completion request.
 """
 
 import json
-import pytest
 from typing import Any
 
-from tokencircuit.canonicalizer import MessageCanonicalizer
-from tokencircuit.ledger import ToolTransactionLedger
-from tokencircuit.validator import TranscriptValidator
-from tokencircuit.engine import InterventionEngine, InterventionConfig
-from tokencircuit.types import CanonicalMessage, CanonicalRole, InterventionStage
-from tokencircuit.state_schema import default_intervention_state
+import pytest
 
+from tokencircuit.canonicalizer import MessageCanonicalizer
+from tokencircuit.engine import InterventionConfig, InterventionEngine
+from tokencircuit.ledger import ToolTransactionLedger
+from tokencircuit.state_schema import default_intervention_state
+from tokencircuit.validator import TranscriptValidator
 
 # =============================================================================
 # STRICT API VALIDATOR MOCKS
@@ -102,38 +101,44 @@ def strict_openai_validate(messages: list[dict[str, Any]]) -> None:
                     )
                 if "type" not in tc or tc["type"] != "function":
                     raise OpenAITranscriptValidationError(
-                        f"messages[{idx}].tool_calls[{tc_idx}]: type must be 'function'",
+                        f"messages[{idx}].tool_calls[{tc_idx}]: "
+                        "type must be 'function'",
                         param=f"messages[{idx}].tool_calls[{tc_idx}].type",
                     )
                 if "function" not in tc:
                     raise OpenAITranscriptValidationError(
-                        f"messages[{idx}].tool_calls[{tc_idx}]: missing 'function'",
+                        f"messages[{idx}].tool_calls[{tc_idx}]: "
+                        "missing 'function'",
                         param=f"messages[{idx}].tool_calls[{tc_idx}].function",
                     )
                 func = tc["function"]
                 if "name" not in func or not func["name"]:
                     raise OpenAITranscriptValidationError(
-                        f"messages[{idx}].tool_calls[{tc_idx}].function: missing 'name'",
+                        f"messages[{idx}].tool_calls[{tc_idx}].function: "
+                        "missing 'name'",
                         param=f"messages[{idx}].tool_calls[{tc_idx}].function.name",
                     )
                 if "arguments" not in func:
                     raise OpenAITranscriptValidationError(
-                        f"messages[{idx}].tool_calls[{tc_idx}].function: missing 'arguments'",
-                        param=f"messages[{idx}].tool_calls[{tc_idx}].function.arguments",
+                        f"messages[{idx}].tool_calls[{tc_idx}].function: "
+                        "missing 'arguments'",
+                        param=f"messages[{idx}].tool_calls[{tc_idx}].function.arguments",  # noqa: E501
                     )
                 # Rule 7: arguments must be valid JSON string
                 args = func["arguments"]
                 if not isinstance(args, str):
                     raise OpenAITranscriptValidationError(
-                        f"messages[{idx}].tool_calls[{tc_idx}].function.arguments: must be string",
-                        param=f"messages[{idx}].tool_calls[{tc_idx}].function.arguments",
+                        f"messages[{idx}].tool_calls[{tc_idx}].function.arguments: "
+                        "must be string",
+                        param=f"messages[{idx}].tool_calls[{tc_idx}].function.arguments",  # noqa: E501
                     )
                 try:
                     json.loads(args)
                 except (json.JSONDecodeError, ValueError):
                     raise OpenAITranscriptValidationError(
-                        f"messages[{idx}].tool_calls[{tc_idx}].function.arguments: invalid JSON",
-                        param=f"messages[{idx}].tool_calls[{tc_idx}].function.arguments",
+                        f"messages[{idx}].tool_calls[{tc_idx}].function.arguments: "
+                        "invalid JSON",
+                        param=f"messages[{idx}].tool_calls[{tc_idx}].function.arguments",  # noqa: E501
                     )
 
                 # Record the call_id
@@ -151,12 +156,14 @@ def strict_openai_validate(messages: list[dict[str, Any]]) -> None:
             # Rule 9: Causal ordering
             if tcid not in issued_call_ids:
                 raise OpenAITranscriptValidationError(
-                    f"messages[{idx}]: tool_call_id '{tcid}' not found in prior assistant messages",
+                    f"messages[{idx}]: tool_call_id '{tcid}' "
+                    "not found in prior assistant messages",
                     param=f"messages[{idx}].tool_call_id",
                 )
             if issued_call_ids[tcid] >= idx:
                 raise OpenAITranscriptValidationError(
-                    f"messages[{idx}]: tool result appears before its call (call at index {issued_call_ids[tcid]})",
+                    f"messages[{idx}]: tool result appears before its call "
+                    f"(call at index {issued_call_ids[tcid]})",
                     param=f"messages[{idx}].tool_call_id",
                 )
             consumed_call_ids.add(tcid)
@@ -181,7 +188,7 @@ def strict_openai_validate(messages: list[dict[str, Any]]) -> None:
         if dangling:
             raise OpenAITranscriptValidationError(
                 f"Dangling tool_call_ids without results: {dangling}. "
-                f"Each tool_call must have a corresponding tool message.",
+                "Each tool_call must have a corresponding tool message.",
                 param="messages",
             )
 
@@ -194,7 +201,8 @@ def strict_anthropic_validate(messages: list[dict[str, Any]]) -> None:
     Rules enforced:
     1. First non-system message must be 'user' role.
     2. Messages must alternate user/assistant (with tool results counting as user-side).
-    3. tool_use blocks in assistant content must have matching tool_result in next user turn.
+    3. tool_use blocks in assistant content must have matching tool_result
+       in next user turn.
     4. No empty content arrays.
     """
     if not messages:
@@ -241,7 +249,9 @@ def run_pipeline_and_validate(
     Returns the final messages that would be sent to the LLM.
     """
     if config is None:
-        config = InterventionConfig(nudge_threshold=1, override_threshold=2, hard_stop_threshold=4)
+        config = InterventionConfig(
+            nudge_threshold=1, override_threshold=2, hard_stop_threshold=4
+        )
     if tc_state is None:
         tc_state = default_intervention_state()
 
@@ -252,7 +262,9 @@ def run_pipeline_and_validate(
         "configurable": {"thread_id": "safety-test"},
     }
 
-    decision = engine.process(raw_messages, state, thread_id="safety-test", node_name="agent")
+    decision = engine.process(
+        raw_messages, state, thread_id="safety-test", node_name="agent"
+    )
 
     # Get the final messages the LLM would see
     if decision.llm_input_messages:
@@ -275,7 +287,9 @@ def run_pipeline_and_validate(
 
 
 class TestOpenAIValidationSafety:
-    """Every test outputs messages through the V7 pipeline then validates against strict OpenAI rules."""
+    """Every test outputs messages through the V7 pipeline then validates
+    against strict OpenAI rules.
+    """
 
     def test_clean_conversation_passes(self):
         """A normal conversation should pass both V7 and OpenAI validation."""
@@ -291,10 +305,26 @@ class TestOpenAIValidationSafety:
         """Complete tool call → result roundtrip passes validation."""
         messages = [
             {"role": "user", "content": "Search for cats"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_1", "type": "function", "function": {"name": "search", "arguments": '{"q": "cats"}'}}
-            ]},
-            {"role": "tool", "content": "Found 5 results", "tool_call_id": "call_1", "name": "search"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "cats"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Found 5 results",
+                "tool_call_id": "call_1",
+                "name": "search",
+            },
             {"role": "assistant", "content": "I found 5 results about cats."},
         ]
         output = run_pipeline_and_validate(messages)
@@ -317,11 +347,29 @@ class TestOpenAIValidationSafety:
         """Duplicate results for the same call_id are stripped."""
         messages = [
             {"role": "user", "content": "Search"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_x", "type": "function", "function": {"name": "search", "arguments": '{"q": "x"}'}}
-            ]},
-            {"role": "tool", "content": "Result 1", "tool_call_id": "call_x", "name": "search"},
-            {"role": "tool", "content": "Result 2 (duplicate)", "tool_call_id": "call_x", "name": "search"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_x",
+                        "type": "function",
+                        "function": {"name": "search", "arguments": '{"q": "x"}'},
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Result 1",
+                "tool_call_id": "call_x",
+                "name": "search",
+            },
+            {
+                "role": "tool",
+                "content": "Result 2 (duplicate)",
+                "tool_call_id": "call_x",
+                "name": "search",
+            },
             {"role": "assistant", "content": "Found it"},
         ]
         output = run_pipeline_and_validate(messages)
@@ -336,10 +384,26 @@ class TestOpenAIValidationSafety:
         """
         messages = [
             {"role": "user", "content": "Run analysis"},
-            {"role": "assistant", "content": "Running", "tool_calls": [
-                {"id": "call_bad", "type": "function", "function": {"name": "analyze", "arguments": "not valid json {{{"}},
-            ]},
-            {"role": "tool", "content": "Result", "tool_call_id": "call_bad", "name": "analyze"},
+            {
+                "role": "assistant",
+                "content": "Running",
+                "tool_calls": [
+                    {
+                        "id": "call_bad",
+                        "type": "function",
+                        "function": {
+                            "name": "analyze",
+                            "arguments": "not valid json {{{",
+                        },
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Result",
+                "tool_call_id": "call_bad",
+                "name": "analyze",
+            },
             {"role": "assistant", "content": "Analysis complete"},
         ]
         output = run_pipeline_and_validate(messages)
@@ -355,29 +419,75 @@ class TestOpenAIValidationSafety:
         """
         messages = [
             {"role": "user", "content": "Multi-tool"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_good", "type": "function", "function": {"name": "search", "arguments": '{"q": "valid"}'}},
-                {"id": "call_bad", "type": "function", "function": {"name": "run", "arguments": "INVALID"}},
-            ]},
-            {"role": "tool", "content": "Search result", "tool_call_id": "call_good", "name": "search"},
-            {"role": "tool", "content": "Run result", "tool_call_id": "call_bad", "name": "run"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_good",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "valid"}',
+                        },
+                    },
+                    {
+                        "id": "call_bad",
+                        "type": "function",
+                        "function": {
+                            "name": "run",
+                            "arguments": "INVALID",
+                        },
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Search result",
+                "tool_call_id": "call_good",
+                "name": "search",
+            },
+            {
+                "role": "tool",
+                "content": "Run result",
+                "tool_call_id": "call_bad",
+                "name": "run",
+            },
             {"role": "assistant", "content": "Done"},
         ]
         output = run_pipeline_and_validate(messages)
         strict_openai_validate(output)
         # BOTH results should be dropped (atomic with malformed AI message)
         tool_msgs = [m for m in output if m.get("role") == "tool"]
-        assert len(tool_msgs) == 0, "All results for malformed AI message should be dropped"
+        assert len(tool_msgs) == 0, (
+            "All results for malformed AI message should be dropped"
+        )
 
     def test_tool_result_before_call_dropped(self):
         """A tool result appearing before its call is invalid and must be dropped."""
         messages = [
             {"role": "user", "content": "Do task"},
             {"role": "tool", "content": "Early result", "tool_call_id": "call_late"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_late", "type": "function", "function": {"name": "task", "arguments": '{"x": 1}'}}
-            ]},
-            {"role": "tool", "content": "Proper result", "tool_call_id": "call_late", "name": "task"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_late",
+                        "type": "function",
+                        "function": {
+                            "name": "task",
+                            "arguments": '{"x": 1}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Proper result",
+                "tool_call_id": "call_late",
+                "name": "task",
+            },
         ]
         output = run_pipeline_and_validate(messages)
         strict_openai_validate(output)
@@ -387,7 +497,9 @@ class TestOpenAIValidationSafety:
         When NUDGE injects a coaching system message, it must NOT break
         the tool_call → tool_result adjacency requirement.
         """
-        config = InterventionConfig(nudge_threshold=1, override_threshold=3, hard_stop_threshold=5)
+        config = InterventionConfig(
+            nudge_threshold=1, override_threshold=3, hard_stop_threshold=5
+        )
         # Force stagnation state to trigger NUDGE
         tc_state = default_intervention_state()
         tc_state["consecutive_stagnation_count"] = 1
@@ -395,14 +507,46 @@ class TestOpenAIValidationSafety:
 
         messages = [
             {"role": "user", "content": "Search again"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_s1", "type": "function", "function": {"name": "search", "arguments": '{"q": "same"}'}}
-            ]},
-            {"role": "tool", "content": "Same result", "tool_call_id": "call_s1", "name": "search"},
-            {"role": "assistant", "content": "Let me try again", "tool_calls": [
-                {"id": "call_s2", "type": "function", "function": {"name": "search", "arguments": '{"q": "same"}'}}
-            ]},
-            {"role": "tool", "content": "Same result", "tool_call_id": "call_s2", "name": "search"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_s1",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "same"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Same result",
+                "tool_call_id": "call_s1",
+                "name": "search",
+            },
+            {
+                "role": "assistant",
+                "content": "Let me try again",
+                "tool_calls": [
+                    {
+                        "id": "call_s2",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "same"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Same result",
+                "tool_call_id": "call_s2",
+                "name": "search",
+            },
         ]
         output = run_pipeline_and_validate(messages, config=config, tc_state=tc_state)
         strict_openai_validate(output)
@@ -412,7 +556,9 @@ class TestOpenAIValidationSafety:
         OVERRIDE compacts failed transactions. The compacted output must still
         pass strict validation — no dangling calls, no orphan results.
         """
-        config = InterventionConfig(nudge_threshold=1, override_threshold=2, hard_stop_threshold=5)
+        config = InterventionConfig(
+            nudge_threshold=1, override_threshold=2, hard_stop_threshold=5
+        )
         tc_state = default_intervention_state()
         tc_state["consecutive_stagnation_count"] = 3
         tc_state["turn_counter"] = 4
@@ -421,18 +567,66 @@ class TestOpenAIValidationSafety:
         messages = [
             {"role": "system", "content": "You are an assistant"},
             {"role": "user", "content": "Find data"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_a", "type": "function", "function": {"name": "search", "arguments": '{"q": "data"}'}}
-            ]},
-            {"role": "tool", "content": "Not found", "tool_call_id": "call_a", "name": "search"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_b", "type": "function", "function": {"name": "search", "arguments": '{"q": "data"}'}}
-            ]},
-            {"role": "tool", "content": "Not found", "tool_call_id": "call_b", "name": "search"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_c", "type": "function", "function": {"name": "search", "arguments": '{"q": "data"}'}}
-            ]},
-            {"role": "tool", "content": "Not found", "tool_call_id": "call_c", "name": "search"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_a",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "data"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Not found",
+                "tool_call_id": "call_a",
+                "name": "search",
+            },
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_b",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "data"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Not found",
+                "tool_call_id": "call_b",
+                "name": "search",
+            },
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_c",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "data"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Not found",
+                "tool_call_id": "call_c",
+                "name": "search",
+            },
         ]
         output = run_pipeline_and_validate(messages, config=config, tc_state=tc_state)
         strict_openai_validate(output)
@@ -448,7 +642,9 @@ class TestOpenAIValidationSafety:
         assistant message with tool_calls in the output, ALL referenced
         call_ids must have matching tool results downstream.
         """
-        config = InterventionConfig(nudge_threshold=1, override_threshold=2, hard_stop_threshold=5)
+        config = InterventionConfig(
+            nudge_threshold=1, override_threshold=2, hard_stop_threshold=5
+        )
         tc_state = default_intervention_state()
         tc_state["consecutive_stagnation_count"] = 4
         tc_state["turn_counter"] = 5
@@ -458,16 +654,60 @@ class TestOpenAIValidationSafety:
         messages = [
             {"role": "system", "content": "Assistant"},
             {"role": "user", "content": "Complex task"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_1", "type": "function", "function": {"name": "search", "arguments": '{"q": "a"}'}},
-                {"id": "call_2", "type": "function", "function": {"name": "fetch", "arguments": '{"url": "x"}'}},
-            ]},
-            {"role": "tool", "content": "Result A", "tool_call_id": "call_1", "name": "search"},
-            {"role": "tool", "content": "Result B", "tool_call_id": "call_2", "name": "fetch"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_3", "type": "function", "function": {"name": "search", "arguments": '{"q": "a"}'}},
-            ]},
-            {"role": "tool", "content": "Same result", "tool_call_id": "call_3", "name": "search"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "a"}',
+                        },
+                    },
+                    {
+                        "id": "call_2",
+                        "type": "function",
+                        "function": {
+                            "name": "fetch",
+                            "arguments": '{"url": "x"}',
+                        },
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Result A",
+                "tool_call_id": "call_1",
+                "name": "search",
+            },
+            {
+                "role": "tool",
+                "content": "Result B",
+                "tool_call_id": "call_2",
+                "name": "fetch",
+            },
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_3",
+                        "type": "function",
+                        "function": {
+                            "name": "search",
+                            "arguments": '{"q": "a"}',
+                        },
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Same result",
+                "tool_call_id": "call_3",
+                "name": "search",
+            },
         ]
         output = run_pipeline_and_validate(messages, config=config, tc_state=tc_state)
 
@@ -485,7 +725,7 @@ class TestOpenAIValidationSafety:
             if msg.get("role") == "tool":
                 all_result_ids.add(msg["tool_call_id"])
 
-        # Dangling = calls without results (excluding the final assistant message's calls)
+        # Dangling = calls without results (excluding the final assistant message calls)
         dangling = all_call_ids - all_result_ids - last_assistant_call_ids
         assert dangling == set(), f"DANGLING TOOL_CALL_IDS DETECTED: {dangling}"
 
@@ -494,16 +734,34 @@ class TestOpenAIValidationSafety:
         Coaching system messages must be injected at valid positions —
         they cannot split a tool_call/tool_result sequence.
         """
-        config = InterventionConfig(nudge_threshold=1, override_threshold=3, hard_stop_threshold=5)
+        config = InterventionConfig(
+            nudge_threshold=1, override_threshold=3, hard_stop_threshold=5
+        )
         tc_state = default_intervention_state()
         tc_state["consecutive_stagnation_count"] = 1
 
         messages = [
             {"role": "user", "content": "Task"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "call_z", "type": "function", "function": {"name": "act", "arguments": '{"x": 1}'}}
-            ]},
-            {"role": "tool", "content": "Done", "tool_call_id": "call_z", "name": "act"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_z",
+                        "type": "function",
+                        "function": {
+                            "name": "act",
+                            "arguments": '{"x": 1}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "Done",
+                "tool_call_id": "call_z",
+                "name": "act",
+            },
         ]
         output = run_pipeline_and_validate(messages, config=config, tc_state=tc_state)
         strict_openai_validate(output)
@@ -516,10 +774,12 @@ class TestOpenAIValidationSafety:
                     # Check it's not between a tool_call assistant and its result
                     prev = output[idx - 1] if idx > 0 else None
                     next_msg = output[idx + 1] if idx + 1 < len(output) else None
-                    if prev and prev.get("role") == "assistant" and "tool_calls" in prev:
+                    is_assistant = prev and prev.get("role") == "assistant"
+                    if is_assistant and "tool_calls" in prev:
                         if next_msg and next_msg.get("role") == "tool":
                             pytest.fail(
-                                f"System message injected between tool_call and result at index {idx}"
+                                f"System message injected between tool_call and "
+                                f"result at index {idx}"
                             )
 
 
@@ -528,7 +788,9 @@ class TestAnthropicValidationSafety:
 
     def test_override_starts_with_user_message(self):
         """Anthropic requires first non-system message to be user role."""
-        config = InterventionConfig(nudge_threshold=1, override_threshold=2, hard_stop_threshold=5)
+        config = InterventionConfig(
+            nudge_threshold=1, override_threshold=2, hard_stop_threshold=5
+        )
         tc_state = default_intervention_state()
         tc_state["consecutive_stagnation_count"] = 3
         tc_state["current_stage"] = "nudge"
@@ -553,7 +815,9 @@ class TestAnthropicValidationSafety:
         for msg in output:
             content = msg.get("content")
             if isinstance(content, list):
-                assert len(content) > 0, "Empty content array would fail Anthropic validation"
+                assert len(content) > 0, (
+                    "Empty content array would fail Anthropic validation"
+                )
 
 
 class TestTranscriptIntegrityMathematicalProofs:
@@ -572,39 +836,89 @@ class TestTranscriptIntegrityMathematicalProofs:
         # Scenario: call without result followed by new call
         [
             {"role": "user", "content": "go"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "c1", "type": "function", "function": {"name": "a", "arguments": '{"x":1}'}},
-            ]},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "c2", "type": "function", "function": {"name": "b", "arguments": '{"y":2}'}},
-            ]},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "c1",
+                        "type": "function",
+                        "function": {"name": "a", "arguments": '{"x":1}'},
+                    },
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "c2",
+                        "type": "function",
+                        "function": {"name": "b", "arguments": '{"y":2}'},
+                    },
+                ],
+            },
             {"role": "tool", "content": "result", "tool_call_id": "c2", "name": "b"},
         ],
         # Scenario: interleaved calls and results out of order
         [
             {"role": "user", "content": "task"},
             {"role": "tool", "content": "early", "tool_call_id": "c_late"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "c_late", "type": "function", "function": {"name": "x", "arguments": '{}'}},
-            ]},
-            {"role": "tool", "content": "proper", "tool_call_id": "c_late", "name": "x"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "c_late",
+                        "type": "function",
+                        "function": {"name": "x", "arguments": "{}"},
+                    },
+                ],
+            },
+            {
+                "role": "tool",
+                "content": "proper",
+                "tool_call_id": "c_late",
+                "name": "x",
+            },
         ],
         # Scenario: tool_calls with empty id
         [
             {"role": "user", "content": "test"},
-            {"role": "assistant", "content": "a", "tool_calls": [
-                {"id": "", "type": "function", "function": {"name": "empty_id", "arguments": '{}'}},
-            ]},
+            {
+                "role": "assistant",
+                "content": "a",
+                "tool_calls": [
+                    {
+                        "id": "",
+                        "type": "function",
+                        "function": {"name": "empty_id", "arguments": "{}"},
+                    },
+                ],
+            },
             {"role": "tool", "content": "result", "tool_call_id": ""},
         ],
         # Scenario: massive duplicate storm
         [
             {"role": "user", "content": "go"},
-            {"role": "assistant", "content": None, "tool_calls": [
-                {"id": "dup_call", "type": "function", "function": {"name": "f", "arguments": '{}'}},
-            ]},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "dup_call",
+                        "type": "function",
+                        "function": {"name": "f", "arguments": "{}"},
+                    },
+                ],
+            },
         ] + [
-            {"role": "tool", "content": f"result_{i}", "tool_call_id": "dup_call", "name": "f"}
+            {
+                "role": "tool",
+                "content": f"result_{i}",
+                "tool_call_id": "dup_call",
+                "name": "f",
+            }
             for i in range(10)
         ],
     ])
@@ -633,14 +947,26 @@ class TestTranscriptIntegrityMathematicalProofs:
                 if random.random() < 0.5 and issued_ids:
                     # Add a tool result (possibly orphaned)
                     tcid = random.choice(issued_ids + [f"orphan_{i}"])
-                    messages.append({"role": "tool", "content": f"r{i}", "tool_call_id": tcid, "name": "t"})
+                    messages.append({
+                        "role": "tool",
+                        "content": f"r{i}",
+                        "tool_call_id": tcid,
+                        "name": "t",
+                    })
                 else:
                     # Add an assistant message with tool_calls
                     cid = f"call_{trial}_{i}"
                     issued_ids.append(cid)
                     messages.append({
-                        "role": "assistant", "content": None,
-                        "tool_calls": [{"id": cid, "type": "function", "function": {"name": f"fn{i}", "arguments": "{}"}}],
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": cid,
+                                "type": "function",
+                                "function": {"name": f"fn{i}", "arguments": "{}"},
+                            }
+                        ],
                     })
 
             output = run_pipeline_and_validate(messages)

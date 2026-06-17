@@ -6,31 +6,27 @@ signal emission, incremental validation, and statelessness guarantees.
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
 
+from tokencircuit.ledger import ToolTransactionLedger
 from tokencircuit.types import (
     CanonicalMessage,
     CanonicalRole,
     SignalType,
-    TransactionStatus,
 )
-from tokencircuit.ledger import ToolTransactionLedger
 from tokencircuit.validator import (
     TranscriptValidator,
-    ValidationResult,
     _is_args_valid,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers — build messages quickly
 # ---------------------------------------------------------------------------
 
-def _system(content: str = "You are a helpful assistant.", *, idx: int = 0) -> CanonicalMessage:
-    return CanonicalMessage(role=CanonicalRole.SYSTEM, content=content, source_index=idx)
+def _system(content: str = "You are a helpful assistant.", *, idx: int = 0) -> CanonicalMessage:  # noqa: E501
+    return CanonicalMessage(role=CanonicalRole.SYSTEM, content=content, source_index=idx)  # noqa: E501
 
 
 def _human(content: str, *, idx: int) -> CanonicalMessage:
@@ -76,7 +72,7 @@ def ledger() -> ToolTransactionLedger:
 
 @pytest.fixture
 def validator(ledger: ToolTransactionLedger) -> TranscriptValidator:
-    return TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=2)
+    return TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=2)  # noqa: E501
 
 
 @pytest.fixture
@@ -110,7 +106,7 @@ class TestCleanTranscript:
         assert result.dropped_call_ids == []
         assert result.signals == []
 
-    def test_clean_transcript_preserves_all_messages(self, validator: TranscriptValidator) -> None:
+    def test_clean_transcript_preserves_all_messages(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """All messages appear in validated_messages."""
         msgs = [
             _system(idx=0),
@@ -141,7 +137,7 @@ class TestCleanTranscript:
 class TestCallBeforeResult:
     """Tool result referencing a non-existent call_id must be dropped."""
 
-    def test_result_with_unknown_call_id_dropped(self, validator: TranscriptValidator) -> None:
+    def test_result_with_unknown_call_id_dropped(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """A tool message whose call_id never appears in any AI is dropped."""
         msgs = [
             _human("hi", idx=0),
@@ -169,7 +165,7 @@ class TestCallBeforeResult:
 class TestResultAfterCall:
     """Tool result must appear after its corresponding AI call message."""
 
-    def test_result_before_call_is_dropped(self, validator: TranscriptValidator) -> None:
+    def test_result_before_call_is_dropped(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """A tool message at an index <= its AI call index is dropped."""
         msgs = [
             _tool("too early", call_id="c1", idx=0),
@@ -178,7 +174,7 @@ class TestResultAfterCall:
         result = validator.validate(msgs, turn_number=1)
         assert 0 in result.dropped_indices
 
-    def test_result_at_same_index_as_call_is_dropped(self, validator: TranscriptValidator) -> None:
+    def test_result_at_same_index_as_call_is_dropped(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """Edge case: source_index == ai_index should still be dropped."""
         msgs = [
             _ai(idx=5, tool_calls=[_tc("c1")]),
@@ -197,7 +193,7 @@ class TestResultAfterCall:
 class TestNoOrphanResults:
     """Orphaned tool results (no matching call) are dropped with auto_recovery."""
 
-    def test_orphan_dropped_with_auto_recovery(self, validator: TranscriptValidator) -> None:
+    def test_orphan_dropped_with_auto_recovery(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """Orphan result is removed when auto_recovery=True."""
         msgs = [
             _human("x", idx=0),
@@ -206,7 +202,7 @@ class TestNoOrphanResults:
         result = validator.validate(msgs, turn_number=1)
         assert 1 in result.dropped_indices
 
-    def test_orphan_not_dropped_without_auto_recovery(self, strict_validator: TranscriptValidator) -> None:
+    def test_orphan_not_dropped_without_auto_recovery(self, strict_validator: TranscriptValidator) -> None:  # noqa: E501
         """Without auto_recovery the tool message is NOT added to dropped_indices
         (the code continues past the orphan check without dropping)."""
         msgs = [
@@ -236,7 +232,7 @@ class TestNoDuplicateResults:
         assert 2 in result.dropped_indices
         assert 1 not in result.dropped_indices
 
-    def test_triple_duplicate_drops_second_and_third(self, validator: TranscriptValidator) -> None:
+    def test_triple_duplicate_drops_second_and_third(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """All results after the first for the same call_id are dropped."""
         msgs = [
             _ai(idx=0, tool_calls=[_tc("c1")]),
@@ -257,7 +253,7 @@ class TestNoDuplicateResults:
 class TestAtomicCallDrop:
     """If an AI message is deemed malformed, ALL matching tool results are dropped."""
 
-    def test_malformed_ai_drops_all_matching_results(self, validator: TranscriptValidator) -> None:
+    def test_malformed_ai_drops_all_matching_results(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """A malformed AI message's tool results are all dropped atomically."""
         bad_tc = {"id": "c1", "name": "t", "args": {"_raw": "not json"}}
         msgs = [
@@ -270,7 +266,7 @@ class TestAtomicCallDrop:
         assert 1 in result.dropped_indices
         assert 2 in result.dropped_indices
 
-    def test_malformed_ai_still_appears_with_empty_tool_calls(self, validator: TranscriptValidator) -> None:
+    def test_malformed_ai_still_appears_with_empty_tool_calls(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """The AI message itself is kept but with tool_calls cleared to []."""
         bad_tc = {"id": "c1", "name": "t", "args": {"_raw": "bad"}}
         msgs = [
@@ -309,7 +305,7 @@ class TestMalformedArgsDrop:
         result = validator.validate(msgs, turn_number=1)
         assert result.is_valid is False
 
-    def test_mixed_good_and_bad_args_drops_all(self, validator: TranscriptValidator) -> None:
+    def test_mixed_good_and_bad_args_drops_all(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """One bad tool_call in an AI message causes ALL calls to be voided."""
         msgs = [
             _ai(
@@ -334,7 +330,7 @@ class TestMalformedArgsDrop:
 class TestCallIdRequired:
     """Tool calls without an 'id' field are malformed (triggers invariant 7)."""
 
-    def test_missing_id_triggers_malformed(self, validator: TranscriptValidator) -> None:
+    def test_missing_id_triggers_malformed(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """A tool_call without 'id' marks the entire AI message malformed."""
         msgs = [
             _ai(idx=0, tool_calls=[{"name": "search", "args": {"q": "test"}}]),
@@ -368,11 +364,11 @@ class TestSystemMessagesPassthrough:
             _tool("orphan", call_id="ghost", idx=1),
         ]
         result = validator.validate(msgs, turn_number=1)
-        sys_msgs = [m for m in result.validated_messages if m.role == CanonicalRole.SYSTEM]
+        sys_msgs = [m for m in result.validated_messages if m.role == CanonicalRole.SYSTEM]  # noqa: E501
         assert len(sys_msgs) == 1
         assert sys_msgs[0].content == "sys prompt"
 
-    def test_multiple_system_messages_preserved(self, validator: TranscriptValidator) -> None:
+    def test_multiple_system_messages_preserved(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """Multiple system messages all survive."""
         msgs = [
             _system("first", idx=0),
@@ -380,7 +376,7 @@ class TestSystemMessagesPassthrough:
             _human("hi", idx=2),
         ]
         result = validator.validate(msgs, turn_number=1)
-        sys_msgs = [m for m in result.validated_messages if m.role == CanonicalRole.SYSTEM]
+        sys_msgs = [m for m in result.validated_messages if m.role == CanonicalRole.SYSTEM]  # noqa: E501
         assert len(sys_msgs) == 2
 
 
@@ -394,7 +390,7 @@ class TestOrphanTolerance:
     def test_corruption_signal_when_tolerance_exceeded(self) -> None:
         """Exceeding max_orphan_tolerance emits TRANSCRIPT_CORRUPTION."""
         ledger = ToolTransactionLedger()
-        v = TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=1)
+        v = TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=1)  # noqa: E501
         msgs = [
             _human("hi", idx=0),
             _tool("o1", call_id="x1", idx=1),
@@ -404,9 +400,9 @@ class TestOrphanTolerance:
         assert SignalType.TRANSCRIPT_CORRUPTION in result.signals
 
     def test_no_corruption_signal_within_tolerance(self) -> None:
-        """Orphans within tolerance do NOT emit TRANSCRIPT_CORRUPTION (from orphans alone)."""
+        """Orphans within tolerance do NOT emit TRANSCRIPT_CORRUPTION (from orphans alone)."""  # noqa: E501
         ledger = ToolTransactionLedger()
-        v = TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=5)
+        v = TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=5)  # noqa: E501
         msgs = [
             _human("hi", idx=0),
             _tool("o1", call_id="x1", idx=1),
@@ -414,7 +410,7 @@ class TestOrphanTolerance:
         result = v.validate(msgs, turn_number=1)
         assert SignalType.TRANSCRIPT_CORRUPTION not in result.signals
 
-    def test_malformed_ai_also_triggers_corruption(self, validator: TranscriptValidator) -> None:
+    def test_malformed_ai_also_triggers_corruption(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """Malformed AI (even with zero orphans) triggers TRANSCRIPT_CORRUPTION."""
         msgs = [
             _ai(idx=0, tool_calls=[{"name": "t", "args": {"q": "x"}}]),  # no id
@@ -439,7 +435,7 @@ class TestOrphanSignal:
         result = validator.validate(msgs, turn_number=1)
         assert SignalType.TOOL_TRANSACTION_ORPHAN in result.signals
 
-    def test_no_orphan_signal_on_clean_transcript(self, validator: TranscriptValidator) -> None:
+    def test_no_orphan_signal_on_clean_transcript(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """Clean transcript → no TOOL_TRANSACTION_ORPHAN signal."""
         msgs = [
             _ai(idx=0, tool_calls=[_tc("c1")]),
@@ -491,8 +487,8 @@ class TestIsArgsValid:
 class TestStatelessness:
     """Validator must be stateless: ledger is reset on every validate() call."""
 
-    def test_ledger_reset_between_calls(self, validator: TranscriptValidator, ledger: ToolTransactionLedger) -> None:
-        """Running validate() twice on different transcripts yields independent results."""
+    def test_ledger_reset_between_calls(self, validator: TranscriptValidator, ledger: ToolTransactionLedger) -> None:  # noqa: E501
+        """Running validate() twice on different transcripts yields independent results."""  # noqa: E501
         msgs1 = [
             _ai(idx=0, tool_calls=[_tc("c1")]),
             _tool("r1", call_id="c1", idx=1),
@@ -510,7 +506,7 @@ class TestStatelessness:
         # "c1" should NOT be in the ledger after second validate
         assert ledger.get_transaction("c1") is None
 
-    def test_orphan_from_prior_run_not_carried(self, validator: TranscriptValidator) -> None:
+    def test_orphan_from_prior_run_not_carried(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """Orphans from a previous validate() do not leak into the next run."""
         bad = [
             _human("x", idx=0),
@@ -548,7 +544,7 @@ class TestEdgeCases:
         assert result.is_valid is True
         assert len(result.validated_messages) == 2
 
-    def test_tool_message_without_tool_call_id_dropped(self, validator: TranscriptValidator) -> None:
+    def test_tool_message_without_tool_call_id_dropped(self, validator: TranscriptValidator) -> None:  # noqa: E501
         """A tool-role message with no tool_call_id at all is dropped."""
         msg = CanonicalMessage(
             role=CanonicalRole.TOOL, content="no id", source_index=0,
@@ -576,8 +572,8 @@ class TestEdgeCases:
         assert result.is_valid is True
         assert len(result.validated_messages) == 2
 
-    def test_consecutive_ai_messages_valid(self, validator: TranscriptValidator) -> None:
-        """Invariant 9: consecutive AI messages without intervening results are valid."""
+    def test_consecutive_ai_messages_valid(self, validator: TranscriptValidator) -> None:  # noqa: E501
+        """Invariant 9: consecutive AI messages without intervening results are valid."""  # noqa: E501
         msgs = [
             _ai(idx=0, tool_calls=[_tc("c1")]),
             _ai(idx=1, tool_calls=[_tc("c2")]),

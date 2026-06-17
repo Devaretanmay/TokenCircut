@@ -22,7 +22,7 @@ import hashlib
 import logging
 import re
 from collections import deque
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from .types import (
     CanonicalMessage,
@@ -376,8 +376,8 @@ class SemanticStagnationDetector:
             content_hash=content_hash,
             tool_signature=tool_signature,
             structural_pattern=structural_pattern,
-            bigram_set=bigrams,
-            trigram_set=trigrams,
+            bigram_set=cast("frozenset[tuple[int, int]]", bigrams),
+            trigram_set=cast("frozenset[tuple[int, int, int]]", trigrams),
         )
 
     def record_fingerprint(self, fingerprint: SemanticFingerprint) -> None:

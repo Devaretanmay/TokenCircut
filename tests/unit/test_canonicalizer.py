@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -11,7 +10,6 @@ import pytest
 
 from tokencircuit.canonicalizer import MessageCanonicalizer
 from tokencircuit.types import CanonicalMessage, CanonicalRole
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -86,7 +84,7 @@ class TestDictToCanonical:
     def test_multiple_messages_preserve_order(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
-        """Multiple messages should be returned in the same order with correct indices."""
+        """Multiple messages should be returned in the same order with correct indices."""  # noqa: E501
         msgs = [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": "u"},
@@ -680,7 +678,7 @@ class TestInvalidJsonArgsFallback:
     def test_non_dict_non_string_args_wrapped(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
-        """Non-dict, non-string args (e.g., a list) should be wrapped in {'_raw': str(...)}."""
+        """Non-dict, non-string args (e.g., a list) should be wrapped in {'_raw': str(...)}."""  # noqa: E501
         msgs = [
             {
                 "role": "assistant",
@@ -728,7 +726,7 @@ class TestCacheBehavior:
     def test_cached_result_updates_source_index(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
-        """A cached message reused at a different index should have the new source_index."""
+        """A cached message reused at a different index should have the new source_index."""  # noqa: E501
         msg = {"role": "user", "content": "hello"}
         # First call — msg at index 0
         r1 = canonicalizer.canonicalize([msg])
@@ -764,7 +762,7 @@ class TestCacheBehavior:
     def test_different_objects_same_content_not_cached_together(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
-        """Two distinct dict objects with the same content should be cached separately."""
+        """Two distinct dict objects with the same content should be cached separately."""  # noqa: E501
         msg1 = {"role": "user", "content": "same"}
         msg2 = {"role": "user", "content": "same"}
         canonicalizer.canonicalize([msg1, msg2])

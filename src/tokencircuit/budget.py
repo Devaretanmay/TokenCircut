@@ -7,13 +7,14 @@ from typing import Dict
 
 class BudgetExceededError(RuntimeError):
     """Raised when the cumulative token budget is exceeded."""
+
     pass
 
 
 class BudgetEnforcer:
     """
     Tracks token consumption and enforces dollar-denominated budgets.
-    
+
     Zero-trust: tracks everything locally in RAM.
     """
 
@@ -38,7 +39,7 @@ class BudgetEnforcer:
     def record_usage(self, model: str, tokens: int) -> float:
         """
         Record token usage and check budget.
-        
+
         Returns:
             The total current spend in USD.
         """
@@ -48,7 +49,8 @@ class BudgetEnforcer:
 
         if self.max_budget_usd > 0 and self._current_spend_usd > self.max_budget_usd:
             raise BudgetExceededError(
-                f"Budget exceeded: ${self._current_spend_usd:.4f} > ${self.max_budget_usd:.4f}"
+                f"Budget exceeded: ${self._current_spend_usd:.4f} > "
+                f"${self.max_budget_usd:.4f}"
             )
 
         return self._current_spend_usd

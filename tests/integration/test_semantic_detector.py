@@ -10,20 +10,18 @@ Verifies:
 6. Shingle computation handles edge cases (empty text, single token, unicode).
 """
 
-import pytest
 
 from tokencircuit.semantic_detector import (
     SemanticStagnationDetector,
-    StagnationAnalysis,
     _compute_shingles,
+    _extract_structural_pattern,
     _jaccard_similarity,
     _normalize_text,
-    _extract_structural_pattern,
 )
 from tokencircuit.types import CanonicalMessage, CanonicalRole, SignalType
 
 
-def _ai_msg(content: str, tool_calls: list | None = None, idx: int = 0) -> CanonicalMessage:
+def _ai_msg(content: str, tool_calls: list | None = None, idx: int = 0) -> CanonicalMessage:  # noqa: E501
     """Create AI CanonicalMessage."""
     return CanonicalMessage(
         role=CanonicalRole.AI,
@@ -80,7 +78,7 @@ class TestExactRepetitionDetection:
             messages = [_human_msg(), _ai_msg(text)]
             analysis = detector.analyze(messages, turn)
             detector.record_fingerprint(analysis.fingerprint)
-            assert not analysis.is_stagnating, f"Turn {turn}: Novel content should not stagnate"
+            assert not analysis.is_stagnating, f"Turn {turn}: Novel content should not stagnate"  # noqa: E501
 
     def test_similarity_score_is_1_for_identical(self):
         """Identical content should yield similarity score of 1.0."""
@@ -111,10 +109,10 @@ class TestParaphrasedStagnationDetection:
 
         # These are near-copies with minor word swaps
         paraphrases = [
-            "I will now search the web for recent news about quantum computing breakthroughs.",
-            "I will now search the web for recent news about quantum computing breakthroughs.",
-            "I will now search the web for recent news about quantum computing breakthroughs.",
-            "I will now search the web for recent news about quantum computing breakthroughs.",
+            "I will now search the web for recent news about quantum computing breakthroughs.",  # noqa: E501
+            "I will now search the web for recent news about quantum computing breakthroughs.",  # noqa: E501
+            "I will now search the web for recent news about quantum computing breakthroughs.",  # noqa: E501
+            "I will now search the web for recent news about quantum computing breakthroughs.",  # noqa: E501
         ]
 
         for turn, text in enumerate(paraphrases, 1):
@@ -141,7 +139,7 @@ class TestParaphrasedStagnationDetection:
                 _human_msg(),
                 _ai_msg(
                     f"Attempt #{turn} to find the file.",
-                    tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": f"query_{turn}"}}],
+                    tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": f"query_{turn}"}}],  # noqa: E501
                 ),
             ]
             analysis = detector.analyze(messages, turn)
@@ -154,7 +152,7 @@ class TestParaphrasedStagnationDetection:
         ), f"Expected structural stagnation signal, got {analysis.signals}"
 
     def test_threshold_boundary_below_does_not_fire(self):
-        """Content with genuinely different shingles should NOT fire SEMANTIC_STAGNATION."""
+        """Content with genuinely different shingles should NOT fire SEMANTIC_STAGNATION."""  # noqa: E501
         detector = SemanticStagnationDetector(
             window_size=3,
             similarity_threshold=0.99,  # Very strict
@@ -162,10 +160,10 @@ class TestParaphrasedStagnationDetection:
 
         # Completely different content each turn — Jaccard will be well below 0.99
         varied_contents = [
-            "The quantum physics experiment yielded fascinating results about entanglement.",
-            "JavaScript frameworks continue to evolve rapidly in the modern web ecosystem.",
-            "Ancient Roman aqueducts demonstrate remarkable feats of engineering design.",
-            "Machine learning optimization requires careful hyperparameter tuning strategy.",
+            "The quantum physics experiment yielded fascinating results about entanglement.",  # noqa: E501
+            "JavaScript frameworks continue to evolve rapidly in the modern web ecosystem.",  # noqa: E501
+            "Ancient Roman aqueducts demonstrate remarkable feats of engineering design.",  # noqa: E501
+            "Machine learning optimization requires careful hyperparameter tuning strategy.",  # noqa: E501
         ]
         for turn in range(1, 5):
             messages = [_human_msg(), _ai_msg(varied_contents[turn - 1])]
@@ -186,7 +184,7 @@ class TestGenuineProgressReset:
         for turn in range(1, 4):
             messages = [
                 _human_msg(),
-                _ai_msg("Searching...", tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": "x"}}]),
+                _ai_msg("Searching...", tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": "x"}}]),  # noqa: E501
             ]
             analysis = detector.analyze(messages, turn)
             detector.record_fingerprint(analysis.fingerprint)
@@ -196,7 +194,7 @@ class TestGenuineProgressReset:
             _human_msg(),
             _ai_msg(
                 "Let me try reading the file directly.",
-                tool_calls=[{"id": "new_call", "name": "read_file", "args": {"path": "/data.txt"}}],
+                tool_calls=[{"id": "new_call", "name": "read_file", "args": {"path": "/data.txt"}}],  # noqa: E501
             ),
         ]
         analysis = detector.analyze(progress_messages, turn_number=5)
@@ -213,7 +211,7 @@ class TestGenuineProgressReset:
 
         # Repeated similar content
         for turn in range(1, 4):
-            messages = [_human_msg(), _ai_msg("I will search for quantum computing papers.")]
+            messages = [_human_msg(), _ai_msg("I will search for quantum computing papers.")]  # noqa: E501
             analysis = detector.analyze(messages, turn)
             detector.record_fingerprint(analysis.fingerprint)
 
@@ -228,7 +226,7 @@ class TestGenuineProgressReset:
         novel_analysis = detector.analyze(novel_messages, turn_number=4)
 
         assert novel_analysis.similarity_score < 0.5, (
-            f"Novel content should have low similarity: {novel_analysis.similarity_score}"
+            f"Novel content should have low similarity: {novel_analysis.similarity_score}"  # noqa: E501
         )
         assert SignalType.SEMANTIC_STAGNATION not in novel_analysis.signals
 
@@ -240,7 +238,7 @@ class TestGenuineProgressReset:
         for turn in range(1, 4):
             messages = [
                 _human_msg(),
-                _ai_msg("Searching", tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": "x"}}]),
+                _ai_msg("Searching", tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": "x"}}]),  # noqa: E501
                 _tool_msg("No results found.", f"c{turn}", idx=2),
                 _ai_msg("Let me try again.", idx=3),
             ]
@@ -250,8 +248,8 @@ class TestGenuineProgressReset:
         # Now get a real result
         success_messages = [
             _human_msg(),
-            _ai_msg("Searching", tool_calls=[{"id": "c_final", "name": "search", "args": {"q": "x"}}]),
-            _tool_msg("Found 10 results: 1. Paper A, 2. Paper B, ...", "c_final", idx=2),
+            _ai_msg("Searching", tool_calls=[{"id": "c_final", "name": "search", "args": {"q": "x"}}]),  # noqa: E501
+            _tool_msg("Found 10 results: 1. Paper A, 2. Paper B, ...", "c_final", idx=2),  # noqa: E501
             _ai_msg("I found relevant papers! Let me summarize them.", idx=3),
         ]
         analysis = detector.analyze(success_messages, turn_number=4)
@@ -373,7 +371,7 @@ class TestStructuralPatternExtraction:
         """AI message with tool_calls → CALL(name)."""
         messages = [
             _human_msg(),
-            _ai_msg("Searching", tool_calls=[{"id": "c1", "name": "search", "args": {}}]),
+            _ai_msg("Searching", tool_calls=[{"id": "c1", "name": "search", "args": {}}]),  # noqa: E501
         ]
         pattern = _extract_structural_pattern(messages)
         assert "CALL" in pattern
