@@ -22,7 +22,7 @@
     <img src="https://img.shields.io/github/license/Devaretanmay/TokenCircut" alt="License"/>
   </a>
   <a href="tests/performance/">
-    <img src="https://img.shields.io/badge/overhead-%3E20%C2%B5s%2Fturn-green" alt="~20µs/turn overhead"/>
+    <img src="https://img.shields.io/badge/overhead-%3C20%C2%B5s%2Fturn-green" alt="<20µs/turn overhead"/>
   </a>
 </p>
 
