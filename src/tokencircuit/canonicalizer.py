@@ -155,7 +155,9 @@ class MessageCanonicalizer:
 
     def _normalize_tool_call(self, tc: dict[str, Any]) -> dict[str, Any]:
         """Normalize a tool call dict to a consistent schema."""
-        call_id = tc.get("id") or tc.get("call_id") or ""
+        call_id = tc.get("id")
+        if call_id is None:
+            call_id = tc.get("call_id") or ""
         name = tc.get("name") or tc.get("function", {}).get("name", "unknown")
 
         # args can be in "args", "arguments", or "function.arguments"

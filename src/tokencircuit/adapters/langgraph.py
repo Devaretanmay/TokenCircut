@@ -225,7 +225,7 @@ class LangGraphPreModelAdapter:
                 "TokenCircuit HARD_STOP: %s", decision.termination_reason
             )
             try:
-                from langgraph.types import Command
+                from langgraph.types import Command  # noqa: I001  # pyright: ignore[reportMissingImports]
 
                 # Return a Command that sends the graph to END
                 return Command(goto="__end__", update=result)  # type: ignore[return-value]

@@ -535,7 +535,7 @@ class InterventionEngine:
 
         if context.dropped_this_turn:
             patch["dropped_this_session"] = context.dropped_this_turn
-            patch["orphaned_transaction_ids"] = context.dropped_this_turn
+            patch["orphaned_transaction_ids"] = context.orphaned_transaction_ids
 
         # Semantic window state
         patch["last_similarity_score"] = context.semantic_similarity_score

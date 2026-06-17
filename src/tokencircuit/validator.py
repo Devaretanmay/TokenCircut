@@ -233,9 +233,8 @@ class TranscriptValidator:
                     continue
 
                 if msg.source_index <= ai_index:
-                    if self._auto_recovery:
-                        dropped_indices.add(msg.source_index)
-                        dropped_call_ids.append(tcid)
+                    dropped_indices.add(msg.source_index)
+                    dropped_call_ids.append(tcid)
                     continue
 
                 self._ledger.register_result(

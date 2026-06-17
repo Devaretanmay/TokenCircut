@@ -47,7 +47,7 @@ class BudgetEnforcer:
         cost = (tokens / 1_000_000) * price_per_1m
         self._current_spend_usd += cost
 
-        if self.max_budget_usd > 0 and self._current_spend_usd > self.max_budget_usd:
+        if self.max_budget_usd > 0 and self._current_spend_usd >= self.max_budget_usd:
             raise BudgetExceededError(
                 f"Budget exceeded: ${self._current_spend_usd:.4f} > "
                 f"${self.max_budget_usd:.4f}"
