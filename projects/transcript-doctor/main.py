@@ -130,11 +130,11 @@ run_case(11, "Auto-repair off: orphans kept as-is", [
     _tool("result", "c1", idx=2),
 ])
 
-# Test auto_repair=False for orphan
+# Test auto_recovery=False for orphan
 print()
 print("  [12] Auto-repair OFF → orphans not dropped:")
 ledger = ToolTransactionLedger()
-validator = TranscriptValidator(ledger=ledger, auto_repair=False)
+validator = TranscriptValidator(ledger=ledger, auto_recovery=False)
 msgs = [
     _tool("orphan", "no_call", idx=0),
     _ai("legit call", tool_calls=[_tc("c1")], idx=1),
@@ -143,7 +143,7 @@ msgs = [
 result = validator.validate(msgs, turn_number=1)
 print(f"        → validated={len(result.validated_messages)}, "
       f"dropped={len(result.dropped_indices)}")
-print(f"        (orphan kept because auto_repair=False)")
+print(f"        (orphan kept because auto_recovery=False)")
 
 run_case(13, "Complex: mixed valid and invalid", [
     _ai("call 1", tool_calls=[_tc("c1")], idx=0),

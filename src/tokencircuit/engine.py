@@ -23,6 +23,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any, Optional, Sequence
 
+from .budget import BudgetEnforcer, BudgetExceededError
 from .canonicalizer import MessageCanonicalizer
 from .ledger import ToolTransactionLedger
 from .semantic_detector import SemanticStagnationDetector, StagnationAnalysis
@@ -82,7 +83,17 @@ class InterventionConfig:
     # Transaction validation
     enable_transcript_validation: bool = True
     max_orphan_tolerance: int = 2
-    auto_repair: bool = True
+    auto_recovery: bool = True
+
+    # Budget
+    max_budget_usd: float = 0.0
+    token_pricing: dict[str, float] = field(
+        default_factory=lambda: {
+            "gpt-4o": 5.0,
+            "gpt-4o-mini": 0.15,
+            "claude-3-5-sonnet": 3.0,
+        }
+    )
 
     # Coaching
     nudge_template: str = (
@@ -130,6 +141,10 @@ class InterventionEngine:
     def __init__(self, *, config: Optional[InterventionConfig] = None) -> None:
         self._config = config or InterventionConfig()
         self._thread_states: OrderedDict[str, _PerThreadState] = OrderedDict()
+        self._budget_enforcer = BudgetEnforcer(
+            max_budget_usd=self._config.max_budget_usd,
+            token_pricing=self._config.token_pricing,
+        )
 
     def _get_state(self, thread_id: str, node_name: str) -> _PerThreadState:
         """Get or create per-thread-per-node internal state."""
@@ -207,7 +222,7 @@ class InterventionEngine:
         if self._config.enable_transcript_validation:
             validator = TranscriptValidator(
                 ledger=ts.ledger,
-                auto_repair=self._config.auto_repair,
+                auto_recovery=self._config.auto_recovery,
                 max_orphan_tolerance=self._config.max_orphan_tolerance,
             )
             res = validator.validate(canonical, turn_number)
@@ -612,6 +627,15 @@ class InterventionEngine:
     def reset_all(self) -> None:
         """Reset all internal state."""
         self._thread_states.clear()
+        self._budget_enforcer.reset()
+
+    def record_usage(self, model: str, tokens: int) -> float:
+        """Record usage and enforce budget."""
+        return self._budget_enforcer.record_usage(model, tokens)
+
+    @property
+    def current_spend(self) -> float:
+        return self._budget_enforcer.current_spend
 
     @property
     def config(self) -> InterventionConfig:

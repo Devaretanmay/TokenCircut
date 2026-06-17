@@ -94,6 +94,27 @@ class LangGraphPreModelAdapter:
 
         return _bound_hook
 
+    def _record_usage_if_present(self, messages: Sequence[Any]) -> None:
+        """Extract token usage from the last AI message and record it."""
+        if not messages:
+            return
+
+        last_msg = messages[-1]
+        # LangChain AIMessage often has usage_metadata
+        usage = getattr(last_msg, "usage_metadata", None)
+        if not usage and isinstance(last_msg, dict):
+            usage = last_msg.get("usage_metadata")
+
+        if usage and isinstance(usage, dict):
+            total_tokens = usage.get("total_tokens", 0)
+            if total_tokens > 0:
+                # We don't necessarily know the model here,
+                # but we can try to find it in the message or use default
+                model = getattr(last_msg, "model", "unknown")
+                if isinstance(model, dict):
+                    model = model.get("name", "unknown")
+                self._engine.record_usage(str(model), total_tokens)
+
     def _execute_hook(self, state: dict[str, Any], *, node_name: str) -> dict[str, Any]:
         """
         Core hook execution logic.
@@ -106,6 +127,9 @@ class LangGraphPreModelAdapter:
             messages = state.get("messages", [])
             if not messages:
                 return {}
+
+            # Record token usage if present in the last AI message
+            self._record_usage_if_present(messages)
 
             # Extract thread_id from configurable or state
             thread_id = self._extract_thread_id(state)

@@ -261,7 +261,7 @@ def run_pipeline_and_validate(
         # PASS case: canonicalize + validate and return as OpenAI format
         canonicalizer = MessageCanonicalizer()
         ledger = ToolTransactionLedger()
-        validator = TranscriptValidator(ledger=ledger, auto_repair=True)
+        validator = TranscriptValidator(ledger=ledger, auto_recovery=True)
         canonical = canonicalizer.canonicalize(raw_messages)
         result = validator.validate(canonical, turn_number)
         output_messages = canonicalizer.to_openai_format(result.validated_messages)

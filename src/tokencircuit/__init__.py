@@ -3,6 +3,7 @@
 import importlib.metadata
 
 from .adapters.langgraph import LangGraphPreModelAdapter
+from .budget import BudgetExceededError
 from .canonicalizer import MessageCanonicalizer
 from .engine import InterventionConfig, InterventionEngine, TokenCircuitError
 from .instrumentation import instrument_crewai, instrument_langgraph
@@ -36,6 +37,7 @@ __all__ = [
     "InterventionEngine",
     "InterventionConfig",
     "TokenCircuitError",
+    "BudgetExceededError",
     "instrument_langgraph",
     "instrument_crewai",
     "LangGraphPreModelAdapter",

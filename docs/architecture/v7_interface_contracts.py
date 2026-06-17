@@ -904,13 +904,13 @@ class TranscriptValidator:
         self,
         *,
         ledger: ToolTransactionLedger,
-        auto_repair: bool = True,
+        auto_recovery: bool = True,
         strict_mode: bool = False,
     ) -> None:
         """
         Args:
             ledger: The ToolTransactionLedger to use for tracking.
-            auto_repair: If True, automatically drop invalid messages.
+            auto_recovery: If True, automatically drop invalid messages.
             strict_mode: If True, emit TRANSCRIPT_CORRUPTION on any violation.
         """
         ...
@@ -927,7 +927,7 @@ class TranscriptValidator:
         1. Register all tool_calls found in AI messages with the ledger.
         2. Attempt to commit all ToolMessages against the ledger.
         3. Identify orphans (results with no matching call).
-        4. If auto_repair: drop orphaned ToolMessages.
+        4. If auto_recovery: drop orphaned ToolMessages.
         5. If orphan count exceeds tolerance: emit TRANSCRIPT_CORRUPTION signal.
 
         Args:

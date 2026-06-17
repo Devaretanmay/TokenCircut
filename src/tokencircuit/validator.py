@@ -81,11 +81,11 @@ class TranscriptValidator:
         self,
         *,
         ledger: ToolTransactionLedger,
-        auto_repair: bool = True,
+        auto_recovery: bool = True,
         max_orphan_tolerance: int = 2,
     ) -> None:
         self._ledger = ledger
-        self._auto_repair = auto_repair
+        self._auto_recovery = auto_recovery
         self._max_orphan_tolerance = max_orphan_tolerance
 
     def validate(
@@ -127,7 +127,7 @@ class TranscriptValidator:
         validated = self._reconstruct_transcript(
             messages, dropped_indices, malformed_ai_indices
         )
-        if self._auto_repair and validated:
+        if self._auto_recovery and validated:
             validated = self._repair_dangling_calls(validated, repair_actions)
 
         if orphan_count > 0:
@@ -226,14 +226,14 @@ class TranscriptValidator:
 
                 ai_index = call_id_to_ai_index.get(tcid)
                 if ai_index is None:
-                    if self._auto_repair:
+                    if self._auto_recovery:
                         dropped_indices.add(msg.source_index)
                         dropped_call_ids.append(tcid)
                         orphan_count += 1
                     continue
 
                 if msg.source_index <= ai_index:
-                    if self._auto_repair:
+                    if self._auto_recovery:
                         dropped_indices.add(msg.source_index)
                         dropped_call_ids.append(tcid)
                     continue

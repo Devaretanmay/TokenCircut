@@ -76,14 +76,14 @@ def ledger() -> ToolTransactionLedger:
 
 @pytest.fixture
 def validator(ledger: ToolTransactionLedger) -> TranscriptValidator:
-    return TranscriptValidator(ledger=ledger, auto_repair=True, max_orphan_tolerance=2)
+    return TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=2)
 
 
 @pytest.fixture
 def strict_validator(ledger: ToolTransactionLedger) -> TranscriptValidator:
     return TranscriptValidator(
         ledger=ledger,
-        auto_repair=False,
+        auto_recovery=False,
         max_orphan_tolerance=0,
     )
 
@@ -191,14 +191,14 @@ class TestResultAfterCall:
 
 
 # ===========================================================================
-# 4. Invariant 3: NO-ORPHAN-RESULTS (auto_repair=True)
+# 4. Invariant 3: NO-ORPHAN-RESULTS (auto_recovery=True)
 # ===========================================================================
 
 class TestNoOrphanResults:
-    """Orphaned tool results (no matching call) are dropped with auto_repair."""
+    """Orphaned tool results (no matching call) are dropped with auto_recovery."""
 
-    def test_orphan_dropped_with_auto_repair(self, validator: TranscriptValidator) -> None:
-        """Orphan result is removed when auto_repair=True."""
+    def test_orphan_dropped_with_auto_recovery(self, validator: TranscriptValidator) -> None:
+        """Orphan result is removed when auto_recovery=True."""
         msgs = [
             _human("x", idx=0),
             _tool("orphan", call_id="ghost", idx=1),
@@ -206,15 +206,15 @@ class TestNoOrphanResults:
         result = validator.validate(msgs, turn_number=1)
         assert 1 in result.dropped_indices
 
-    def test_orphan_not_dropped_without_auto_repair(self, strict_validator: TranscriptValidator) -> None:
-        """Without auto_repair the tool message is NOT added to dropped_indices
+    def test_orphan_not_dropped_without_auto_recovery(self, strict_validator: TranscriptValidator) -> None:
+        """Without auto_recovery the tool message is NOT added to dropped_indices
         (the code continues past the orphan check without dropping)."""
         msgs = [
             _human("x", idx=0),
             _tool("orphan", call_id="ghost", idx=1),
         ]
         result = strict_validator.validate(msgs, turn_number=1)
-        # With auto_repair=False, the orphan is not added to dropped_indices
+        # With auto_recovery=False, the orphan is not added to dropped_indices
         assert 1 not in result.dropped_indices
 
 
@@ -394,7 +394,7 @@ class TestOrphanTolerance:
     def test_corruption_signal_when_tolerance_exceeded(self) -> None:
         """Exceeding max_orphan_tolerance emits TRANSCRIPT_CORRUPTION."""
         ledger = ToolTransactionLedger()
-        v = TranscriptValidator(ledger=ledger, auto_repair=True, max_orphan_tolerance=1)
+        v = TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=1)
         msgs = [
             _human("hi", idx=0),
             _tool("o1", call_id="x1", idx=1),
@@ -406,7 +406,7 @@ class TestOrphanTolerance:
     def test_no_corruption_signal_within_tolerance(self) -> None:
         """Orphans within tolerance do NOT emit TRANSCRIPT_CORRUPTION (from orphans alone)."""
         ledger = ToolTransactionLedger()
-        v = TranscriptValidator(ledger=ledger, auto_repair=True, max_orphan_tolerance=5)
+        v = TranscriptValidator(ledger=ledger, auto_recovery=True, max_orphan_tolerance=5)
         msgs = [
             _human("hi", idx=0),
             _tool("o1", call_id="x1", idx=1),

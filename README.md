@@ -11,6 +11,8 @@ Current agent frameworks rely on blunt "Circuit Breakers" (like `recursion_limit
 
 Instead of failing the run, TokenCircuit forces a strategy pivot, turning bounded degradation into successful task completion.
 
+![TokenCircuit Demo](docs/demo.gif)
+
 Supported frameworks: **LangGraph**, **CrewAI**, **OpenAI function calling**.
 
 ## The Progressive Intervention Protocol
@@ -23,6 +25,27 @@ TokenCircuit operates silently in the background, intervening progressively:
 | **NUDGE** | Ephemeral system message injected: *"You have tried this 3 times. Change strategy."* |
 | **OVERRIDE** | Compacts failed transactions + injects forceful directive. Protects against OpenAI API validation errors. |
 | **HARD_STOP** | Graceful fallback termination, preserving state dictionary for debugging. |
+
+## Quick Start
+
+TokenCircuit requires exactly **one line of code** to secure your graph.
+
+```python
+from tokencircuit import instrument_langgraph, InterventionConfig
+
+# Secure your graph with auto-recovery and a budget
+config = InterventionConfig(
+    max_budget_usd=0.50, 
+    auto_recovery=True
+)
+safe_graph = instrument_langgraph(builder, config=config).compile()
+```
+
+## Fleet Dashboard (Coming Soon)
+
+A single pane of glass to monitor agentic reliability across your entire fleet.
+
+[Placeholder for Fleet Dashboard Screenshot]
 
 ```python
 from tokencircuit import InterventionConfig, LangGraphPreModelAdapter
@@ -175,7 +198,7 @@ config = InterventionConfig(
     # Transaction validation
     enable_transcript_validation=True,
     max_orphan_tolerance=2,
-    auto_repair=True,
+    auto_recovery=True,
 
     # Enterprise
     audit_mode=False,

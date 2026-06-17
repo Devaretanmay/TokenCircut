@@ -99,14 +99,14 @@ class TestPerformanceBaseline:
         # Warmup
         for _ in range(10):
             ledger = ToolTransactionLedger()
-            validator = TranscriptValidator(ledger=ledger, auto_repair=True)
+            validator = TranscriptValidator(ledger=ledger, auto_recovery=True)
             validator.validate(canonical, turn_number=1)
 
         # Measure
         times: list[float] = []
         for _ in range(100):
             ledger = ToolTransactionLedger()
-            validator = TranscriptValidator(ledger=ledger, auto_repair=True)
+            validator = TranscriptValidator(ledger=ledger, auto_recovery=True)
             start = time.perf_counter_ns()
             validator.validate(canonical, turn_number=1)
             elapsed_us = (time.perf_counter_ns() - start) / 1000
