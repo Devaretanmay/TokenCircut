@@ -1,6 +1,7 @@
 """High-level instrumentation wrappers for one-line integration."""
 
 import logging
+import warnings
 from typing import Any, Optional
 
 from .engine import InterventionConfig
@@ -17,6 +18,10 @@ def instrument_langgraph(
     """
     Instrument a LangGraph StateGraph builder with TokenCircuit.
 
+    .. deprecated::
+       Use `LangGraphPreModelAdapter` directly or the `tc_pre_model_hook`
+       factory from ``tokencircuit.adapters.langgraph`` instead.
+
     Injects the LangGraphPreModelAdapter into the specified nodes
     (or all nodes ending in "agent" or "model" by default).
 
@@ -29,6 +34,14 @@ def instrument_langgraph(
     Returns:
         The instrumented builder.
     """
+    warnings.warn(
+        "instrument_langgraph() is deprecated. Use LangGraphPreModelAdapter "
+        "directly or the tc_pre_model_hook() factory from "
+        "tokencircuit.adapters.langgraph instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
     from .adapters.langgraph import LangGraphPreModelAdapter
 
     adapter = LangGraphPreModelAdapter(config=config)
@@ -47,30 +60,16 @@ def instrument_langgraph(
 
     for name in target_nodes:
         if name in builder.nodes:
-            # LangGraph builder.nodes[name] is a Node object.
-            # We can't easily modify pre_model_hook post-hoc, but we
-            # can wrap the runnable.
-            # This ensures the intervention engine runs before the
-            # node execution.
             node = builder.nodes[name]
-
-            # Using LangChain Runnable sequence for clean injection
-            # Note: This is a 1-line Trojan wrapper.
             original_runnable = node.runnable
 
-            # We use the adapter's hook logic to wrap the runnable
-            # Since pre_model_hook return is merged into the input,
-            # we can simulate it:
             async def wrapped_runnable(
                 input_data: Any, config: Any = None, **kwargs: Any
             ) -> Any:
-                # 1. Run the hook
                 patch = await adapter.hook(input_data)
-                # 2. Merge patch into input_data (ephemeral mutation)
                 merged_input = input_data
                 if isinstance(input_data, dict):
                     merged_input = {**input_data, **patch}
-                # 3. Call original
                 return await original_runnable.ainvoke(merged_input, config, **kwargs)
 
             node.runnable = wrapped_runnable

@@ -278,3 +278,128 @@ class LangGraphPreModelAdapter:
     def config(self) -> InterventionConfig:
         """Access the configuration."""
         return self._config
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# tc_pre_model_hook — functional API for LangGraph integration
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def tc_pre_model_hook(
+    config: Optional[InterventionConfig] = None,
+    node_name: str = "agent",
+    *,
+    engine: Optional[InterventionEngine] = None,
+) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
+    """
+    Factory that creates a pre_model_hook for LangGraph.
+
+    This is the RECOMMENDED integration path. Simpler than manually
+    instantiating LangGraphPreModelAdapter.
+
+    Usage:
+        from tokencircuit.adapters.langgraph import tc_pre_model_hook
+
+        builder.add_node(
+            "agent",
+            call_model,
+            pre_model_hook=tc_pre_model_hook(config=my_config, node_name="agent"),
+        )
+
+    Args:
+        config: TokenCircuit InterventionConfig. Uses defaults if None.
+        node_name: The node name to associate with this hook.
+        engine: Optional pre-built InterventionEngine for sharing state.
+
+    Returns:
+        Async callable matching LangGraph's pre_model_hook signature.
+    """
+    adapter = LangGraphPreModelAdapter(config=config, engine=engine)
+    return adapter.create_hook(node_name=node_name)
+
+
+# =============================================================================
+# TokenCircuitToolNode — ToolNode wrapper with transaction tracking
+# =============================================================================
+
+
+class TokenCircuitToolNode:
+    """
+    Drop-in wrapper around LangGraph's ToolNode that tracks tool call
+    transactions via TokenCircuit's ToolTransactionLedger.
+
+    Usage:
+        tools = [search_tool, calculator_tool]
+        tool_node = TokenCircuitToolNode(tools, engine=engine)
+        builder.add_node("tools", tool_node)
+
+    Transaction data feeds into TokenCircuit's stagnation and
+    transcript-validation signals.
+    """
+
+    def __init__(
+        self,
+        tools: Sequence[Any],
+        *,
+        engine: Optional[InterventionEngine] = None,
+        config: Optional[InterventionConfig] = None,
+    ) -> None:
+        from langgraph.prebuilt import ToolNode  # pyright: ignore[reportMissingImports]
+
+        self._tool_node = ToolNode(tools)
+        self._engine = engine or InterventionEngine(config=config)
+
+    async def ainvoke(
+        self, state: dict, config: Optional[dict] = None, **kwargs: Any
+    ) -> dict:
+        messages = state.get("messages", [])
+        thread_id = self._extract_thread_id(config, state)
+        turn_number = state.get("_tc_intervention", {}).get("turn_counter", 0) + 1
+
+        # ponytail: global lock on _get_state, per-node states if contention appears
+        ts = self._engine._get_state(thread_id, "tool_call")
+        for msg in messages:
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for idx, tc in enumerate(msg.tool_calls):
+                    ts.ledger.register_call(
+                        call_id=tc.get("id", str(idx)),
+                        tool_name=tc.get("name", "unknown"),
+                        source_message_index=idx,
+                        turn_number=turn_number,
+                    )
+
+        result = await self._tool_node.ainvoke(state, config, **kwargs)
+
+        for msg in result.get("messages", []):
+            if hasattr(msg, "tool_call_id") and hasattr(msg, "content"):
+                content = msg.content or ""
+                ts.ledger.register_result(
+                    call_id=msg.tool_call_id,
+                    result_content_prefix=str(content)[:200],
+                    result_length=len(str(content)),
+                    source_message_index=0,
+                    turn_number=turn_number,
+                )
+
+        return result
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._tool_node, name)
+
+    @staticmethod
+    def _extract_thread_id(config: Optional[dict], state: dict) -> str:
+        if config:
+            tid = config.get("configurable", {}).get("thread_id")
+            if tid:
+                return str(tid)
+        tc_state = state.get("_tc_intervention", {})
+        if isinstance(tc_state, dict):
+            tid = tc_state.get("thread_id")
+            if tid:
+                return str(tid)
+        return "default"
+
+    @property
+    def engine(self) -> InterventionEngine:
+        """Access the underlying InterventionEngine."""
+        return self._engine
