@@ -28,6 +28,10 @@
 
 ---
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="TokenCircuit Demo — Agent hits 403, loops, OVERRIDE forces graceful pivot" width="640"/>
+</p>
+
 Most guardrails are blunt instruments. They wait for your agent to burn $50 in API
 credits, hit a hard `recursion_limit`, and crash—wiping the state and returning an
 error to your user.
