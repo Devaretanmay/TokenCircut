@@ -41,7 +41,7 @@ def _get_encoder() -> object:
     """Lazy-load tiktoken cl100k_base encoder."""
     global _encoder
     if _encoder is None:
-        import tiktoken
+        import tiktoken  # pyright: ignore[reportMissingImports]
 
         _encoder = tiktoken.get_encoding("cl100k_base")
     return _encoder

@@ -44,7 +44,7 @@ logger = logging.getLogger("tokencircuit.engine")
 
 def _get_tracer(name: str = "tokencircuit"):
     try:
-        from opentelemetry import trace
+        from opentelemetry import trace  # pyright: ignore[reportMissingImports]
         return trace.get_tracer(name)
     except ImportError:
         return None
