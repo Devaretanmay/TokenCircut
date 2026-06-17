@@ -120,8 +120,8 @@ class SemanticFingerprint(BaseModel):
     content_hash: str
     tool_signature: str
     structural_pattern: str
-    bigram_set: frozenset[str] = Field(default_factory=frozenset)
-    trigram_set: frozenset[str] = Field(default_factory=frozenset)
+    bigram_set: frozenset[tuple[int, int]] = Field(default_factory=frozenset)
+    trigram_set: frozenset[tuple[int, int, int]] = Field(default_factory=frozenset)
 
 
 class InterventionContext(BaseModel):

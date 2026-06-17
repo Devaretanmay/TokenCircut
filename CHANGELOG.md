@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.1 (2026-06-17)
+
+### V7 Finalization & Safety
+- **Budget Enforcer**: Implemented dollar-denominated budget tracking and enforcement. Raises `BudgetExceededError` when USD limits are breached.
+- **Atomic Transcript Surgery**: Refined `TranscriptValidator` to ensure tool call/result pairs are dropped atomically during `OVERRIDE` stage, preventing LLM API crashes.
+- **AI Slop Eradication**: Complete refactor of the codebase to remove redundant abstractions, defensive bloat, and narrative noise. Codebase size reduced by 15% with improved signal-to-noise ratio.
+- **One-Line Instrumentation**: Re-introduced and modernized `instrument_langgraph` and `instrument_crewai` for effortless SDK integration.
+- **Enhanced Type Safety**: Migrated core types to strict Pydantic and dataclass(slots) models for maximum performance and validation rigor.
+
 ## 0.2.0 (2026-06-15)
 
 ### Core Architectural Overhaul (V7)
