@@ -115,6 +115,15 @@ Benchmarked on the full intervention pipeline:
 Zero external embedding dependencies. All detection is local shingle-based
 fingerprinting.
 
+## Production Audit & Mathematical Guarantees
+
+TokenCircuit was built for zero-trust, high-throughput enterprise environments. It undergoes ruthless structural auditing to ensure it never crashes an agent or corrupts state.
+
+*   **Zero PII Telemetry**: Telemetry is strictly isolated to integers and enum metadata. A mathematical proof in the payload compiler ensures that raw user prompts, tool arguments, and tool results are structurally excluded and cannot leak.
+*   **Bounded Algorithm Complexity**: The semantic loop detector uses stdlib tokenization and guarantees a worst-case shingle comparison complexity of `O(N)`. A hard cap on the sliding window prevents CPU algorithmic blowups even on massive multi-turn infinite loops.
+*   **Atomic Transcript Surgery**: TokenCircuit adheres strictly to LangGraph v1.0.8+ API boundaries. Stray, duplicate, or dangling tool calls resulting from an intervention are surgically stripped from the LLM prompt, definitively eliminating OpenAI/Anthropic `400 Bad Request` API errors.
+*   **Async & Event-Loop Safety**: All metrics fire asynchronously in daemon threads. Core pre-model hooks and interceptors run perfectly synchronously, ensuring they never starve or block the primary application event loop.
+
 ## Supported Frameworks
 
 *   **LangGraph**: Native `pre_model_hook` and `ToolNode(wrap_tool_call=...)` integration (v1.0.8+).
