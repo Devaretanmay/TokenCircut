@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from typing import Any
+from langchain_core.messages.tool import ToolMessage  # pyright: ignore[reportMissingImports]
+from langchain_core.runnables.config import RunnableConfig  # pyright: ignore[reportMissingImports]
 
-from langchain_core.messages.tool import ToolMessage
-from langchain_core.runnables.config import RunnableConfig
 
 # ToolCallWrapper is a runtime type alias, not a class — import only what we
 # need as concrete symbols; reconstruct the wrapper type locally so mypy
