@@ -2,7 +2,7 @@
 API Validation Safety Tests — Mock strict OpenAI and Anthropic transcript validators.
 
 These tests mathematically guarantee that TranscriptValidator repairs and
-LangGraphPreModelAdapter outputs NEVER produce:
+TokenCircuit outputs NEVER produce:
 - Dangling tool_call_ids (assistant tool_call with no matching tool result)
 - Orphaned tool results (tool message with no prior matching assistant tool_call)
 - Non-causal message ordering (tool result appears before its call)
@@ -107,8 +107,7 @@ def strict_openai_validate(messages: list[dict[str, Any]]) -> None:
                     )
                 if "function" not in tc:
                     raise OpenAITranscriptValidationError(
-                        f"messages[{idx}].tool_calls[{tc_idx}]: "
-                        "missing 'function'",
+                        f"messages[{idx}].tool_calls[{tc_idx}]: missing 'function'",
                         param=f"messages[{idx}].tool_calls[{tc_idx}].function",
                     )
                 func = tc["function"]
@@ -826,102 +825,111 @@ class TestTranscriptIntegrityMathematicalProofs:
     regardless of input. They are parameterized over pathological inputs.
     """
 
-    @pytest.mark.parametrize("scenario", [
-        # Scenario: all orphan results
+    @pytest.mark.parametrize(
+        "scenario",
         [
-            {"role": "tool", "content": "r1", "tool_call_id": "orphan_1"},
-            {"role": "tool", "content": "r2", "tool_call_id": "orphan_2"},
-            {"role": "tool", "content": "r3", "tool_call_id": "orphan_3"},
+            # Scenario: all orphan results
+            [
+                {"role": "tool", "content": "r1", "tool_call_id": "orphan_1"},
+                {"role": "tool", "content": "r2", "tool_call_id": "orphan_2"},
+                {"role": "tool", "content": "r3", "tool_call_id": "orphan_3"},
+            ],
+            # Scenario: call without result followed by new call
+            [
+                {"role": "user", "content": "go"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "a", "arguments": '{"x":1}'},
+                        },
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "c2",
+                            "type": "function",
+                            "function": {"name": "b", "arguments": '{"y":2}'},
+                        },
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "content": "result",
+                    "tool_call_id": "c2",
+                    "name": "b",
+                },
+            ],
+            # Scenario: interleaved calls and results out of order
+            [
+                {"role": "user", "content": "task"},
+                {"role": "tool", "content": "early", "tool_call_id": "c_late"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "c_late",
+                            "type": "function",
+                            "function": {"name": "x", "arguments": "{}"},
+                        },
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "content": "proper",
+                    "tool_call_id": "c_late",
+                    "name": "x",
+                },
+            ],
+            # Scenario: tool_calls with empty id
+            [
+                {"role": "user", "content": "test"},
+                {
+                    "role": "assistant",
+                    "content": "a",
+                    "tool_calls": [
+                        {
+                            "id": "",
+                            "type": "function",
+                            "function": {"name": "empty_id", "arguments": "{}"},
+                        },
+                    ],
+                },
+                {"role": "tool", "content": "result", "tool_call_id": ""},
+            ],
+            # Scenario: massive duplicate storm
+            [
+                {"role": "user", "content": "go"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "dup_call",
+                            "type": "function",
+                            "function": {"name": "f", "arguments": "{}"},
+                        },
+                    ],
+                },
+            ]
+            + [
+                {
+                    "role": "tool",
+                    "content": f"result_{i}",
+                    "tool_call_id": "dup_call",
+                    "name": "f",
+                }
+                for i in range(10)
+            ],
         ],
-        # Scenario: call without result followed by new call
-        [
-            {"role": "user", "content": "go"},
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "c1",
-                        "type": "function",
-                        "function": {"name": "a", "arguments": '{"x":1}'},
-                    },
-                ],
-            },
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "c2",
-                        "type": "function",
-                        "function": {"name": "b", "arguments": '{"y":2}'},
-                    },
-                ],
-            },
-            {"role": "tool", "content": "result", "tool_call_id": "c2", "name": "b"},
-        ],
-        # Scenario: interleaved calls and results out of order
-        [
-            {"role": "user", "content": "task"},
-            {"role": "tool", "content": "early", "tool_call_id": "c_late"},
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "c_late",
-                        "type": "function",
-                        "function": {"name": "x", "arguments": "{}"},
-                    },
-                ],
-            },
-            {
-                "role": "tool",
-                "content": "proper",
-                "tool_call_id": "c_late",
-                "name": "x",
-            },
-        ],
-        # Scenario: tool_calls with empty id
-        [
-            {"role": "user", "content": "test"},
-            {
-                "role": "assistant",
-                "content": "a",
-                "tool_calls": [
-                    {
-                        "id": "",
-                        "type": "function",
-                        "function": {"name": "empty_id", "arguments": "{}"},
-                    },
-                ],
-            },
-            {"role": "tool", "content": "result", "tool_call_id": ""},
-        ],
-        # Scenario: massive duplicate storm
-        [
-            {"role": "user", "content": "go"},
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "dup_call",
-                        "type": "function",
-                        "function": {"name": "f", "arguments": "{}"},
-                    },
-                ],
-            },
-        ] + [
-            {
-                "role": "tool",
-                "content": f"result_{i}",
-                "tool_call_id": "dup_call",
-                "name": "f",
-            }
-            for i in range(10)
-        ],
-    ])
+    )
     def test_output_always_passes_strict_validation(self, scenario):
         """
         For ANY pathological input, the V7 pipeline output must pass
@@ -947,27 +955,31 @@ class TestTranscriptIntegrityMathematicalProofs:
                 if random.random() < 0.5 and issued_ids:
                     # Add a tool result (possibly orphaned)
                     tcid = random.choice(issued_ids + [f"orphan_{i}"])
-                    messages.append({
-                        "role": "tool",
-                        "content": f"r{i}",
-                        "tool_call_id": tcid,
-                        "name": "t",
-                    })
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "content": f"r{i}",
+                            "tool_call_id": tcid,
+                            "name": "t",
+                        }
+                    )
                 else:
                     # Add an assistant message with tool_calls
                     cid = f"call_{trial}_{i}"
                     issued_ids.append(cid)
-                    messages.append({
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": cid,
-                                "type": "function",
-                                "function": {"name": f"fn{i}", "arguments": "{}"},
-                            }
-                        ],
-                    })
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": cid,
+                                    "type": "function",
+                                    "function": {"name": f"fn{i}", "arguments": "{}"},
+                                }
+                            ],
+                        }
+                    )
 
             output = run_pipeline_and_validate(messages)
             # Must not raise

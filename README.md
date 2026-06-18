@@ -29,7 +29,7 @@
 ---
 
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="TokenCircuit Demo — Agent hits 403, loops, OVERRIDE forces graceful pivot" width="640"/>
+  <img src="demo.gif" alt="TokenCircuit in action" width="800"/>
 </p>
 
 Most guardrails are blunt instruments. They wait for your agent to burn $50 in API
@@ -50,31 +50,28 @@ agent to pivot strategies.
     injection) to an *Override* (surgical transcript compaction) before a *Hard Stop*
     (clean termination with state preserved).
 *   **Zero-Dependency Semantic Loop Detection**: Shingle-based fingerprinting catches
-    paraphrased loops without embedding models, network calls, or external APIs.
+    paraphrased loops without embedding models, tokenizers, network calls, or external APIs.
 *   **Atomic Transcript Surgery**: Removes orphaned tool-call transactions to prevent
     LLM API validation errors (400 Bad Request) before they happen.
-*   **Local Budget Enforcement**: USD-denominated budget tracking per thread. No
-    surprise "$4k Tuesday Morning" bills.
 *   **Zero-Trust Privacy**: Every detection runs in your process. No telemetry,
     no prompts leave your RAM.
 
 ## Quick Start
 
-TokenCircuit integrates with LangGraph through the framework's official extension
-points—no monkey-patching required.
+TokenCircuit natively integrates with LangGraph v1.0.8+ through official
+extension points—no monkey-patching required.
 
 ```python
-from langgraph.prebuilt import create_react_agent
-from tokencircuit.adapters.langgraph import tc_pre_model_hook, TokenCircuitToolNode
+from langgraph.prebuilt import ToolNode, create_react_agent
+from tokencircuit import InterventionEngine
+from tokencircuit.adapters.langgraph import tc_pre_model_hook, tc_wrap_tool_call
 
-# 1. Wrap your tools with TokenCircuit's transaction tracking
-safe_tool_node = TokenCircuitToolNode(tools)
-
-# 2. Inject the pre-model hook for transcript surgery
+engine = InterventionEngine()
+safe_tools = ToolNode(tools, wrap_tool_call=tc_wrap_tool_call(engine.get_thread_ledger))
 agent = create_react_agent(
     model,
-    tools=safe_tool_node,
-    pre_model_hook=tc_pre_model_hook(),
+    tools=safe_tools,
+    pre_model_hook=lambda s: tc_pre_model_hook(s, engine=engine),
 )
 ```
 
@@ -85,11 +82,13 @@ is modified—the original checkpoint remains clean.
 ### Manual graph with named hooks
 
 ```python
+from tokencircuit import InterventionConfig, InterventionEngine
 from tokencircuit.adapters.langgraph import tc_pre_model_hook
 
+engine = InterventionEngine(config=InterventionConfig(...))
 builder.add_node(
     "agent", call_model,
-    pre_model_hook=tc_pre_model_hook(config=my_config, node_name="agent"),
+    pre_model_hook=lambda s: tc_pre_model_hook(s, engine=engine, node_name="agent"),
 )
 ```
 
@@ -99,6 +98,7 @@ builder.add_node(
 pip install tokencircuit                    # Core engine
 pip install "tokencircuit[langgraph]"       # + LangGraph adapter
 pip install "tokencircuit[crewai]"          # + CrewAI adapter
+pip install "tokencircuit[cli]"             # + TUI Dashboard
 ```
 
 ## Performance
@@ -117,17 +117,9 @@ fingerprinting.
 
 ## Supported Frameworks
 
-*   **LangGraph**: Native `pre_model_hook` integration. `tc_pre_model_hook()`
-    factory and `TokenCircuitToolNode` for tool call transaction tracking.
+*   **LangGraph**: Native `pre_model_hook` and `ToolNode(wrap_tool_call=...)` integration (v1.0.8+).
 *   **CrewAI**: Execution hook support (`crewai>=0.60`) for proactive
     intervention.
-*   **OpenAI**: Standard function calling wrappers for raw LLM usage.
-
-## Fleet Dashboard (Coming Soon)
-
-A single pane of glass to monitor agentic reliability, tokens saved, and
-intervention logs across your entire fleet.
-
 ---
 
 <p align="center">

@@ -1,16 +1,17 @@
 """TokenCircuit — Pre-Model Intervention Engine."""
 
+from __future__ import annotations
+
 import importlib.metadata
 
-from .adapters.langgraph import (
-    LangGraphPreModelAdapter,
-    TokenCircuitToolNode,
-    tc_pre_model_hook,
-)
-from .budget import BudgetExceededError
+try:
+    from .adapters.langgraph import tc_pre_model_hook, tc_wrap_tool_call
+except ImportError:
+    tc_pre_model_hook = None  # type: ignore[assignment]
+    tc_wrap_tool_call = None  # type: ignore[assignment]
+
 from .canonicalizer import MessageCanonicalizer
 from .engine import InterventionConfig, InterventionEngine, TokenCircuitError
-from .instrumentation import instrument_crewai, instrument_langgraph
 from .ledger import ToolTransactionLedger
 from .semantic_detector import SemanticStagnationDetector
 from .state_schema import (
@@ -49,10 +50,6 @@ __all__ = [
     "InterventionEngine",
     "InterventionConfig",
     "TokenCircuitError",
-    "BudgetExceededError",
-    "instrument_langgraph",
-    "instrument_crewai",
-    "LangGraphPreModelAdapter",
-    "TokenCircuitToolNode",
     "tc_pre_model_hook",
+    "tc_wrap_tool_call",
 ]

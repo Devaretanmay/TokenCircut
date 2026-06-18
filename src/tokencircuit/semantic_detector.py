@@ -1,8 +1,8 @@
 """
 SemanticStagnationDetector — zero-dependency semantic loop detection via shingling.
 
-Uses tiktoken (cl100k_base) to tokenize, then computes Jaccard similarity over
-2-gram and 3-gram shingle sets of normalized assistant text to detect paraphrased
+Uses stdlib tokenization, then computes Jaccard similarity over 2-gram and
+3-gram shingle sets of normalized assistant text to detect paraphrased
 loops without requiring embedding models.
 
 Detection Modes:
@@ -22,7 +22,9 @@ import hashlib
 import logging
 import re
 from collections import deque
-from typing import Any, Optional, cast
+from dataclasses import dataclass
+from itertools import pairwise
+from typing import Any
 
 from .types import (
     CanonicalMessage,
@@ -32,33 +34,19 @@ from .types import (
 )
 
 logger = logging.getLogger("tokencircuit.semantic_detector")
-
-# Lazy-loaded tiktoken encoder
-_encoder: Optional[object] = None
-
-
-def _get_encoder() -> object:
-    """Lazy-load tiktoken cl100k_base encoder."""
-    global _encoder
-    if _encoder is None:
-        import tiktoken  # pyright: ignore[reportMissingImports]
-
-        _encoder = tiktoken.get_encoding("cl100k_base")
-    return _encoder
+_MAX_FINGERPRINT_CHARS = 20_000
+# Hard cap on window_size to prevent O(window_size * N) blowup.
+# At 20k chars / 5 chars avg = 4000 tokens → ~4000 bigrams + trigrams.
+# 1000 window entries × 8000 shingles = 8M Jaccard ops per analyze() call —
+# unacceptable in a hot LangGraph node.  Cap at 50 (50 × 8k = 400k ops, fine).
+_MAX_WINDOW_SIZE = 50
 
 
 def _compute_shingles(token_ids: list[int], n: int) -> frozenset[tuple[int, ...]]:
-    """Compute n-gram shingles from token IDs efficiently."""
-    if len(token_ids) < n:
-        return frozenset()
-
+    """Compute n-gram shingles from token IDs."""
     if n == 2:
-        return frozenset(zip(token_ids, token_ids[1:]))
-    if n == 3:
-        return frozenset(zip(token_ids, token_ids[1:], token_ids[2:]))
-
-    # Generic case for n > 3
-    return frozenset(tuple(token_ids[i : i + n]) for i in range(len(token_ids) - n + 1))
+        return frozenset(pairwise(token_ids))
+    return frozenset(zip(*(token_ids[i:] for i in range(n))))
 
 
 def _jaccard_similarity(a: frozenset[Any], b: frozenset[Any]) -> float:
@@ -76,11 +64,16 @@ def _jaccard_similarity(a: frozenset[Any], b: frozenset[Any]) -> float:
 def _normalize_text(text: str) -> str:
     """Normalize text for comparison: lowercase, collapse whitespace, strip numbers."""
     text = text.lower()
-    # Remove specific numeric values but keep structure
     text = re.sub(r"\b\d+\b", "NUM", text)
-    # Collapse whitespace
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _token_ids(text: str) -> list[int]:
+    """Deterministic stdlib token IDs for shingling."""
+    return [
+        int.from_bytes(hashlib.blake2b(token.encode(), digest_size=8).digest(), "big")
+        for token in re.findall(r"\w+|[^\w\s]", text)
+    ]
 
 
 def _extract_structural_pattern(messages: list[CanonicalMessage]) -> str:
@@ -119,41 +112,21 @@ def _extract_structural_pattern(messages: list[CanonicalMessage]) -> str:
     return "→".join(pattern_parts)
 
 
+@dataclass(slots=True)
 class StagnationAnalysis:
-    """Output of SemanticStagnationDetector.analyze()."""
-
-    __slots__ = (
-        "is_stagnating",
-        "similarity_score",
-        "pattern_diversity",
-        "signals",
-        "fingerprint",
-        "window_summary",
-    )
-
-    def __init__(
-        self,
-        *,
-        is_stagnating: bool,
-        similarity_score: float,
-        pattern_diversity: float,
-        signals: list[SignalType],
-        fingerprint: SemanticFingerprint,
-        window_summary: str = "",
-    ) -> None:
-        self.is_stagnating = is_stagnating
-        self.similarity_score = similarity_score
-        self.pattern_diversity = pattern_diversity
-        self.signals = signals
-        self.fingerprint = fingerprint
-        self.window_summary = window_summary
+    is_stagnating: bool
+    similarity_score: float
+    pattern_diversity: float
+    signals: list[SignalType]
+    fingerprint: SemanticFingerprint
+    window_summary: str = ""
 
 
 class SemanticStagnationDetector:
     """
     Detects semantic-level stagnation using token n-gram Jaccard similarity.
 
-    Zero external embedding dependencies — uses tiktoken cl100k_base for tokenization,
+    Zero external embedding/tokenizer dependencies — uses stdlib tokenization,
     then computes 2-gram and 3-gram shingle sets for Jaccard comparison.
     """
 
@@ -176,6 +149,11 @@ class SemanticStagnationDetector:
         """
         if window_size < 2:
             raise ValueError("window_size must be >= 2")
+        if window_size > _MAX_WINDOW_SIZE:
+            raise ValueError(
+                f"window_size {window_size} exceeds {_MAX_WINDOW_SIZE}; "
+                f"avoids O(window_size * N) Jaccard blowup"
+            )
         if not (0.0 <= similarity_threshold <= 1.0):
             raise ValueError("similarity_threshold must be in [0.0, 1.0]")
         if abs(bigram_weight + trigram_weight - 1.0) > 1e-6:
@@ -357,36 +335,23 @@ class SemanticStagnationDetector:
                     )
                 break
 
-        # Compute content hash
+        ai_content = ai_content[:_MAX_FINGERPRINT_CHARS]
         content_hash = hashlib.sha256(ai_content.encode()).hexdigest()
-
-        # Compute structural pattern
         structural_pattern = _extract_structural_pattern(messages)
-
-        # Compute shingle set (combined 2-grams and 3-grams)
-        normalized = _normalize_text(ai_content)
-        encoder = _get_encoder()
-        token_ids = encoder.encode(normalized)  # type: ignore[union-attr]
-
-        bigrams = _compute_shingles(token_ids, 2)
-        trigrams = _compute_shingles(token_ids, 3)
+        token_ids = _token_ids(_normalize_text(ai_content))
 
         return SemanticFingerprint(
             turn_number=turn_number,
             content_hash=content_hash,
             tool_signature=tool_signature,
             structural_pattern=structural_pattern,
-            bigram_set=cast("frozenset[tuple[int, int]]", bigrams),
-            trigram_set=cast("frozenset[tuple[int, int, int]]", trigrams),
+            bigram_set=_compute_shingles(token_ids, 2),  # type: ignore[arg-type]
+            trigram_set=_compute_shingles(token_ids, 3),  # type: ignore[arg-type]
         )
 
     def record_fingerprint(self, fingerprint: SemanticFingerprint) -> None:
         """Add a fingerprint to the sliding window."""
         self._window.append(fingerprint)
-
-    def get_window(self) -> list[SemanticFingerprint]:
-        """Return the current sliding window."""
-        return list(self._window)
 
     def reset(self) -> None:
         """Clear the sliding window."""
@@ -396,7 +361,3 @@ class SemanticStagnationDetector:
     def window_size(self) -> int:
         """Current number of fingerprints in the window."""
         return len(self._window)
-
-    @property
-    def similarity_threshold(self) -> float:
-        return self._similarity_threshold

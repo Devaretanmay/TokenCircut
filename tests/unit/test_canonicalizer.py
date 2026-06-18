@@ -139,9 +139,7 @@ class TestRoleMappings:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].role == CanonicalRole.AI
 
-    def test_role_case_insensitive(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_role_case_insensitive(self, canonicalizer: MessageCanonicalizer) -> None:
         """Role strings should be matched case-insensitively."""
         msgs = [{"role": "USER", "content": "x"}]
         result = canonicalizer.canonicalize(msgs)
@@ -191,9 +189,7 @@ class TestToolCallExtractionDict:
         assert tc["name"] == "get_weather"
         assert tc["args"] == {"city": "NYC"}
 
-    def test_multiple_tool_calls(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_multiple_tool_calls(self, canonicalizer: MessageCanonicalizer) -> None:
         """Multiple tool_calls in a single message should all be normalized."""
         msgs = [
             {
@@ -236,9 +232,7 @@ class TestToolCallExtractionDict:
 class TestMultimodalContent:
     """Tests for list-of-blocks multimodal content handling."""
 
-    def test_text_blocks_joined(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_text_blocks_joined(self, canonicalizer: MessageCanonicalizer) -> None:
         """Multiple text blocks should be joined with newlines."""
         msgs = [
             {
@@ -252,9 +246,7 @@ class TestMultimodalContent:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].content == "Line 1\nLine 2"
 
-    def test_image_blocks_ignored(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_image_blocks_ignored(self, canonicalizer: MessageCanonicalizer) -> None:
         """Image blocks should be silently dropped; only text extracted."""
         msgs = [
             {
@@ -268,9 +260,7 @@ class TestMultimodalContent:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].content == "Look at this"
 
-    def test_plain_string_blocks(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_plain_string_blocks(self, canonicalizer: MessageCanonicalizer) -> None:
         """Plain strings inside a content list should be included."""
         msgs = [
             {
@@ -298,9 +288,7 @@ class TestMultimodalContent:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].content == "prefix\nmiddle\nsuffix"
 
-    def test_empty_content_list(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_empty_content_list(self, canonicalizer: MessageCanonicalizer) -> None:
         """An empty content list should produce an empty string."""
         msgs = [{"role": "user", "content": []}]
         result = canonicalizer.canonicalize(msgs)
@@ -359,9 +347,7 @@ class TestLangChainConversion:
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
         """If the class name is generic, 'type' attr should determine role."""
-        mock = _make_langchain_msg(
-            "BaseMessage", content="x", type_attr="human"
-        )
+        mock = _make_langchain_msg("BaseMessage", content="x", type_attr="human")
         result = canonicalizer.canonicalize([mock])
         assert result[0].role == CanonicalRole.HUMAN
 
@@ -369,9 +355,7 @@ class TestLangChainConversion:
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
         """type='system' on an otherwise generic class should yield SYSTEM."""
-        mock = _make_langchain_msg(
-            "BaseMessage", content="sys", type_attr="system"
-        )
+        mock = _make_langchain_msg("BaseMessage", content="sys", type_attr="system")
         result = canonicalizer.canonicalize([mock])
         assert result[0].role == CanonicalRole.SYSTEM
 
@@ -379,9 +363,7 @@ class TestLangChainConversion:
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
         """type='tool' on a generic class should yield TOOL."""
-        mock = _make_langchain_msg(
-            "BaseMessage", content="res", type_attr="tool"
-        )
+        mock = _make_langchain_msg("BaseMessage", content="res", type_attr="tool")
         result = canonicalizer.canonicalize([mock])
         assert result[0].role == CanonicalRole.TOOL
 
@@ -449,9 +431,7 @@ class TestLangChainConversion:
 class TestToolCallNormalization:
     """Tests for _normalize_tool_call field extraction from different schemas."""
 
-    def test_id_from_id_field(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_id_from_id_field(self, canonicalizer: MessageCanonicalizer) -> None:
         """'id' field should be used as the call id."""
         msgs = [
             {
@@ -462,10 +442,10 @@ class TestToolCallNormalization:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls[0]["id"] == "abc"
 
-    def test_id_from_call_id_field(
+    def test_call_id_field_not_fallback(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
-        """'call_id' field should be used as the call id when 'id' is missing."""
+        """'call_id' is not used as 'id' fallback anymore."""
         msgs = [
             {
                 "role": "assistant",
@@ -473,11 +453,9 @@ class TestToolCallNormalization:
             }
         ]
         result = canonicalizer.canonicalize(msgs)
-        assert result[0].tool_calls[0]["id"] == "xyz"
+        assert result[0].tool_calls[0]["id"] == ""  # call_id no longer maps to id
 
-    def test_id_fallback_to_empty(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_id_fallback_to_empty(self, canonicalizer: MessageCanonicalizer) -> None:
         """Missing both 'id' and 'call_id' should result in an empty string."""
         msgs = [
             {
@@ -488,9 +466,7 @@ class TestToolCallNormalization:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls[0]["id"] == ""
 
-    def test_name_from_name_field(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_name_from_name_field(self, canonicalizer: MessageCanonicalizer) -> None:
         """'name' field should be used directly."""
         msgs = [
             {
@@ -501,9 +477,7 @@ class TestToolCallNormalization:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls[0]["name"] == "my_func"
 
-    def test_name_from_function_name(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_name_from_function_name(self, canonicalizer: MessageCanonicalizer) -> None:
         """'function.name' should be used when 'name' is absent."""
         msgs = [
             {
@@ -532,16 +506,12 @@ class TestToolCallNormalization:
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls[0]["name"] == "unknown"
 
-    def test_args_from_args_field(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_args_from_args_field(self, canonicalizer: MessageCanonicalizer) -> None:
         """'args' dict should be used directly."""
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "args": {"a": 1, "b": 2}}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "args": {"a": 1, "b": 2}}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
@@ -554,9 +524,7 @@ class TestToolCallNormalization:
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "arguments": {"k": "v"}}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "arguments": {"k": "v"}}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
@@ -597,40 +565,30 @@ class TestJsonStringArgsParsing:
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "args": '{"key": "value"}'}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "args": '{"key": "value"}'}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls[0]["args"] == {"key": "value"}
 
-    def test_valid_json_in_arguments(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_valid_json_in_arguments(self, canonicalizer: MessageCanonicalizer) -> None:
         """A valid JSON string in 'arguments' should also be parsed."""
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "arguments": '{"n": 42}'}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "arguments": '{"n": 42}'}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls[0]["args"] == {"n": 42}
 
-    def test_complex_json_object(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_complex_json_object(self, canonicalizer: MessageCanonicalizer) -> None:
         """Complex nested JSON should be parsed correctly."""
         nested = {"items": [1, 2, 3], "meta": {"nested": True}}
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "args": json.dumps(nested)}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "args": json.dumps(nested)}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
@@ -652,9 +610,7 @@ class TestInvalidJsonArgsFallback:
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "args": "not json {{{"}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "args": "not json {{{"}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
@@ -667,9 +623,7 @@ class TestInvalidJsonArgsFallback:
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "args": "hello world"}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "args": "hello world"}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
@@ -682,17 +636,13 @@ class TestInvalidJsonArgsFallback:
         msgs = [
             {
                 "role": "assistant",
-                "tool_calls": [
-                    {"id": "1", "name": "fn", "args": [1, 2, 3]}
-                ],
+                "tool_calls": [{"id": "1", "name": "fn", "args": [1, 2, 3]}],
             }
         ]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls[0]["args"] == {"_raw": "[1, 2, 3]"}
 
-    def test_integer_args_wrapped(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_integer_args_wrapped(self, canonicalizer: MessageCanonicalizer) -> None:
         """Integer args should be wrapped in {'_raw': str(...)}."""
         msgs = [
             {
@@ -705,72 +655,6 @@ class TestInvalidJsonArgsFallback:
 
 
 # ===================================================================
-# 9. Cache behavior
-# ===================================================================
-
-
-class TestCacheBehavior:
-    """Tests for internal caching of canonicalized messages."""
-
-    def test_same_object_returns_cached_result(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """Canonicalizing the same message object twice should use the cache."""
-        msg = {"role": "user", "content": "hello"}
-        result1 = canonicalizer.canonicalize([msg])
-        result2 = canonicalizer.canonicalize([msg])
-        # Both should produce equivalent results
-        assert result1[0].role == result2[0].role
-        assert result1[0].content == result2[0].content
-
-    def test_cached_result_updates_source_index(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """A cached message reused at a different index should have the new source_index."""  # noqa: E501
-        msg = {"role": "user", "content": "hello"}
-        # First call — msg at index 0
-        r1 = canonicalizer.canonicalize([msg])
-        assert r1[0].source_index == 0
-        # Second call — msg at index 1 (preceded by another message)
-        other = {"role": "system", "content": "sys"}
-        r2 = canonicalizer.canonicalize([other, msg])
-        assert r2[1].source_index == 1
-
-    def test_cache_does_not_share_tool_calls_list(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """Cached results should copy tool_calls to avoid cross-contamination."""
-        msg = {
-            "role": "assistant",
-            "tool_calls": [{"id": "1", "name": "fn", "args": {}}],
-        }
-        r1 = canonicalizer.canonicalize([msg])
-        r2 = canonicalizer.canonicalize([msg])
-        # Mutating one should not affect the other
-        r1[0].tool_calls.append({"id": "extra", "name": "hack", "args": {}})
-        assert len(r2[0].tool_calls) == 1
-
-    def test_cache_populated_after_first_call(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """The internal cache should have entries after canonicalization."""
-        msg = {"role": "user", "content": "x"}
-        assert len(canonicalizer._cache) == 0
-        canonicalizer.canonicalize([msg])
-        assert len(canonicalizer._cache) == 1
-
-    def test_different_objects_same_content_not_cached_together(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
-        """Two distinct dict objects with the same content should be cached separately."""  # noqa: E501
-        msg1 = {"role": "user", "content": "same"}
-        msg2 = {"role": "user", "content": "same"}
-        canonicalizer.canonicalize([msg1, msg2])
-        # They have different id(), so cache should hold 2 entries
-        assert len(canonicalizer._cache) == 2
-
-
-# ===================================================================
 # 10. to_openai_format() round-trip
 # ===================================================================
 
@@ -778,9 +662,7 @@ class TestCacheBehavior:
 class TestToOpenAIFormat:
     """Tests for converting canonical messages back to OpenAI dict format."""
 
-    def test_simple_roundtrip(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_simple_roundtrip(self, canonicalizer: MessageCanonicalizer) -> None:
         """A simple message should survive canonicalize → to_openai_format."""
         original = [{"role": "user", "content": "Hello"}]
         canonical = canonicalizer.canonicalize(original)
@@ -788,9 +670,7 @@ class TestToOpenAIFormat:
         assert openai_fmt[0]["role"] == "user"
         assert openai_fmt[0]["content"] == "Hello"
 
-    def test_system_roundtrip(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_system_roundtrip(self, canonicalizer: MessageCanonicalizer) -> None:
         """System messages should round-trip correctly."""
         original = [{"role": "system", "content": "Be concise."}]
         canonical = canonicalizer.canonicalize(original)
@@ -830,9 +710,7 @@ class TestToOpenAIFormat:
         parsed_args = json.loads(tc["function"]["arguments"])
         assert parsed_args == {"q": "test"}
 
-    def test_tool_result_roundtrip(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_tool_result_roundtrip(self, canonicalizer: MessageCanonicalizer) -> None:
         """Tool result messages should preserve tool_call_id and name."""
         original = [
             {
@@ -849,9 +727,7 @@ class TestToOpenAIFormat:
         assert openai_fmt[0]["name"] == "search"
         assert openai_fmt[0]["content"] == "results here"
 
-    def test_role_mapping_back(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_role_mapping_back(self, canonicalizer: MessageCanonicalizer) -> None:
         """Each canonical role should map back to the correct OpenAI role string."""
         canonical = [
             CanonicalMessage(role=CanonicalRole.SYSTEM, content="a"),
@@ -898,14 +774,10 @@ class TestToOpenAIFormat:
         assert openai_fmt[0]["content"] is None
         assert len(openai_fmt[0]["tool_calls"]) == 1
 
-    def test_name_only_on_tool_role(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_name_only_on_tool_role(self, canonicalizer: MessageCanonicalizer) -> None:
         """The 'name' field should only appear for TOOL role messages."""
         # AI message with name should NOT include name in output
-        canonical_ai = [
-            CanonicalMessage(role=CanonicalRole.AI, content="x", name="fn")
-        ]
+        canonical_ai = [CanonicalMessage(role=CanonicalRole.AI, content="x", name="fn")]
         openai_ai = canonicalizer.to_openai_format(canonical_ai)
         assert "name" not in openai_ai[0]
 
@@ -930,49 +802,37 @@ class TestToOpenAIFormat:
 class TestEdgeCases:
     """Tests for edge cases and boundary conditions."""
 
-    def test_empty_content_string(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_empty_content_string(self, canonicalizer: MessageCanonicalizer) -> None:
         """A message with an empty content string should produce content=''."""
         msgs = [{"role": "user", "content": ""}]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].content == ""
 
-    def test_none_content(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_none_content(self, canonicalizer: MessageCanonicalizer) -> None:
         """A message with content=None should produce content=''."""
         msgs = [{"role": "assistant", "content": None}]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].content == ""
 
-    def test_missing_content_key(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_missing_content_key(self, canonicalizer: MessageCanonicalizer) -> None:
         """A dict without a 'content' key should produce content=''."""
         msgs = [{"role": "user"}]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].content == ""
 
-    def test_empty_tool_calls_list(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_empty_tool_calls_list(self, canonicalizer: MessageCanonicalizer) -> None:
         """An empty tool_calls list should result in no tool_calls."""
         msgs = [{"role": "assistant", "content": "x", "tool_calls": []}]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls == []
 
-    def test_tool_calls_none(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_tool_calls_none(self, canonicalizer: MessageCanonicalizer) -> None:
         """tool_calls=None should result in an empty tool_calls list."""
         msgs = [{"role": "assistant", "content": "x", "tool_calls": None}]
         result = canonicalizer.canonicalize(msgs)
         assert result[0].tool_calls == []
 
-    def test_empty_message_sequence(
-        self, canonicalizer: MessageCanonicalizer
-    ) -> None:
+    def test_empty_message_sequence(self, canonicalizer: MessageCanonicalizer) -> None:
         """An empty sequence should return an empty list."""
         result = canonicalizer.canonicalize([])
         assert result == []
@@ -996,10 +856,12 @@ class TestEdgeCases:
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
         """Error fallback should truncate content to 500 chars."""
+
         # Create something that will fail conversion and has a large repr
         class LargeRepr:
             def __repr__(self) -> str:
                 return "X" * 1000
+
         broken = LargeRepr()
         result = canonicalizer.canonicalize([broken])
         assert len(result[0].content) <= 500
@@ -1016,18 +878,6 @@ class TestEdgeCases:
         assert "Hello world" in r
         assert "tc1" in r
 
-    def test_canonical_message_repr_with_tool_calls(self) -> None:
-        """CanonicalMessage repr should show tool_calls count."""
-        msg = CanonicalMessage(
-            role=CanonicalRole.AI,
-            tool_calls=[
-                {"id": "1", "name": "a", "args": {}},
-                {"id": "2", "name": "b", "args": {}},
-            ],
-        )
-        r = repr(msg)
-        assert "tool_calls=2" in r
-
     def test_mixed_dict_and_langchain_messages(
         self, canonicalizer: MessageCanonicalizer
     ) -> None:
@@ -1040,6 +890,3 @@ class TestEdgeCases:
         assert result[0].content == "from dict"
         assert result[1].role == CanonicalRole.AI
         assert result[1].content == "from langchain"
-
-
-

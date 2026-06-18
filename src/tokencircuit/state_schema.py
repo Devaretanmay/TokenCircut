@@ -41,19 +41,23 @@ class InterventionStateSchema(TypedDict, total=False):
     strategies_attempted: list[str]
 
 
-_LIST_FIELDS = frozenset({
-    "orphaned_transaction_ids",
-    "dropped_this_session",
-    "coaching_history",
-    "strategies_attempted",
-})
+_LIST_FIELDS = frozenset(
+    {
+        "orphaned_transaction_ids",
+        "dropped_this_session",
+        "coaching_history",
+        "strategies_attempted",
+    }
+)
 
-_COUNTER_FIELDS = frozenset({
-    "turn_counter",
-    "total_interventions",
-    "nudge_count",
-    "override_count",
-})
+_COUNTER_FIELDS = frozenset(
+    {
+        "turn_counter",
+        "total_interventions",
+        "nudge_count",
+        "override_count",
+    }
+)
 
 
 def default_intervention_state() -> InterventionStateSchema:

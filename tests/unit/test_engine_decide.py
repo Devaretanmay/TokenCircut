@@ -4,6 +4,7 @@ Comprehensive unit tests for InterventionEngine.decide() and InterventionConfig.
 Tests the pure decision logic in isolation, without requiring any of the
 heavy pipeline components (SemanticStagnationDetector, TranscriptValidator, etc.).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -11,7 +12,7 @@ import pytest
 from tokencircuit.engine import (
     InterventionConfig,
     InterventionEngine,
-    _stage_str_to_int,
+    _tool_calls_signature,
 )
 from tokencircuit.types import (
     InterventionContext,
@@ -104,24 +105,32 @@ class TestInterventionConfigValidation:
 
     def test_config_override_must_exceed_nudge(self):
         """override_threshold must be strictly > nudge_threshold."""
-        with pytest.raises(ValueError, match="override_threshold must be > nudge_threshold"):  # noqa: E501
+        with pytest.raises(
+            ValueError, match="override_threshold must be > nudge_threshold"
+        ):  # noqa: E501
             InterventionConfig(nudge_threshold=3, override_threshold=3)
 
     def test_config_override_below_nudge_raises(self):
         """override_threshold below nudge_threshold should raise."""
-        with pytest.raises(ValueError, match="override_threshold must be > nudge_threshold"):  # noqa: E501
+        with pytest.raises(
+            ValueError, match="override_threshold must be > nudge_threshold"
+        ):  # noqa: E501
             InterventionConfig(nudge_threshold=5, override_threshold=3)
 
     def test_config_hard_stop_must_exceed_override(self):
         """hard_stop_threshold must be strictly > override_threshold."""
-        with pytest.raises(ValueError, match="hard_stop_threshold must be > override_threshold"):  # noqa: E501
+        with pytest.raises(
+            ValueError, match="hard_stop_threshold must be > override_threshold"
+        ):  # noqa: E501
             InterventionConfig(
                 nudge_threshold=1, override_threshold=2, hard_stop_threshold=2
             )
 
     def test_config_hard_stop_below_override_raises(self):
         """hard_stop_threshold below override_threshold should raise."""
-        with pytest.raises(ValueError, match="hard_stop_threshold must be > override_threshold"):  # noqa: E501
+        with pytest.raises(
+            ValueError, match="hard_stop_threshold must be > override_threshold"
+        ):  # noqa: E501
             InterventionConfig(
                 nudge_threshold=1, override_threshold=3, hard_stop_threshold=2
             )
@@ -206,16 +215,22 @@ class TestDeescalation:
             current_stage=InterventionStage.OVERRIDE,
         )
         decision = engine.decide(ctx)
-        assert decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns  # noqa: E501
+        assert (
+            decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns
+        )  # noqa: E501
 
-    def test_deescalation_from_hard_stop_sets_cooldown(self, engine: InterventionEngine):  # noqa: E501
+    def test_deescalation_from_hard_stop_sets_cooldown(
+        self, engine: InterventionEngine
+    ):  # noqa: E501
         """De-escalating from HARD_STOP should set cooldown."""
         ctx = _make_context(
             active_signals=[],
             current_stage=InterventionStage.HARD_STOP,
         )
         decision = engine.decide(ctx)
-        assert decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns  # noqa: E501
+        assert (
+            decision.state_patch["cooldown_remaining"] == engine.config.cooldown_turns
+        )  # noqa: E501
 
     def test_deescalation_from_pass_no_cooldown(self, engine: InterventionEngine):
         """When already PASS and no signals, cooldown should remain 0."""
@@ -572,9 +587,7 @@ class TestRunawayGenerationBypass:
         decision = engine.decide(ctx)
         assert decision.stage == InterventionStage.HARD_STOP
 
-    def test_runaway_hard_stop_has_termination_reason(
-        self, engine: InterventionEngine
-    ):
+    def test_runaway_hard_stop_has_termination_reason(self, engine: InterventionEngine):
         """RUNAWAY-triggered HARD_STOP also sets termination_reason."""
         ctx = _make_context(
             active_signals=[SignalType.RUNAWAY_GENERATION],
@@ -708,60 +721,21 @@ class TestEstimatedTokensSaved:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 13. _stage_str_to_int mapping
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class TestStageStrToInt:
-    """Tests for the module-level _stage_str_to_int helper."""
-
-    @pytest.mark.parametrize(
-        "input_str, expected",
-        [
-            ("pass", 0),
-            ("nudge", 1),
-            ("override", 2),
-            ("hard_stop", 3),
-        ],
-    )
-    def test_known_stages(self, input_str: str, expected: int):
-        """Lowercase stage names map to correct IntEnum values."""
-        assert _stage_str_to_int(input_str) == expected
-
-    @pytest.mark.parametrize(
-        "input_str",
-        [
-            "PASS", "Pass", "NUDGE", "Nudge",
-            "OVERRIDE", "Override", "HARD_STOP", "Hard_Stop",
-        ],
-    )
-    def test_case_insensitive(self, input_str: str):
-        """Mapping is case-insensitive."""
-        result = _stage_str_to_int(input_str)
-        assert result in {0, 1, 2, 3}
-
-    def test_unknown_stage_defaults_to_zero(self):
-        """Unknown stage strings default to 0 (PASS)."""
-        assert _stage_str_to_int("banana") == 0
-        assert _stage_str_to_int("") == 0
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 # 14. _tool_calls_signature sorting
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
 class TestToolCallsSignature:
-    """Tests for InterventionEngine._tool_calls_signature static method."""
+    """Tests for _tool_calls_signature module-level function."""
 
     def test_empty_list(self):
         """Empty tool_calls list produces empty signature."""
-        assert InterventionEngine._tool_calls_signature([]) == ""
+        assert _tool_calls_signature([]) == ""
 
     def test_single_tool_call(self):
         """Single tool call signature includes name and arg types."""
         tc = [{"name": "search", "args": {"query": "hello", "limit": 5}}]
-        sig = InterventionEngine._tool_calls_signature(tc)
+        sig = _tool_calls_signature(tc)
         assert "search" in sig
 
     def test_deterministic_ordering(self):
@@ -774,41 +748,40 @@ class TestToolCallsSignature:
             {"name": "alpha", "args": {"y": "hi"}},
             {"name": "beta", "args": {"x": 1}},
         ]
-        sig_a = InterventionEngine._tool_calls_signature(tc_a)
-        sig_b = InterventionEngine._tool_calls_signature(tc_b)
+        sig_a = _tool_calls_signature(tc_a)
+        sig_b = _tool_calls_signature(tc_b)
         assert sig_a == sig_b
 
     def test_different_args_different_types_produce_different_signatures(self):
         """Calls with the same name but different arg types produce different sigs."""
         tc_int = [{"name": "search", "args": {"query": 42}}]
         tc_str = [{"name": "search", "args": {"query": "42"}}]
-        sig_int = InterventionEngine._tool_calls_signature(tc_int)
-        sig_str = InterventionEngine._tool_calls_signature(tc_str)
+        sig_int = _tool_calls_signature(tc_int)
+        sig_str = _tool_calls_signature(tc_str)
         assert sig_int != sig_str
 
     def test_non_dict_args_produces_question_mark(self):
         """When args is not a dict, signature uses '?' for arg types."""
         tc = [{"name": "tool", "args": "raw_string"}]
-        sig = InterventionEngine._tool_calls_signature(tc)
+        sig = _tool_calls_signature(tc)
         assert "?" in sig
 
     def test_no_name_field(self):
         """Missing 'name' key should not crash; uses empty string."""
         tc = [{"args": {"x": 1}}]
-        sig = InterventionEngine._tool_calls_signature(tc)
+        sig = _tool_calls_signature(tc)
         assert isinstance(sig, str)
 
     def test_no_args_field(self):
         """Missing 'args' key defaults to empty dict → no arg types."""
         tc = [{"name": "tool"}]
-        sig = InterventionEngine._tool_calls_signature(tc)
+        sig = _tool_calls_signature(tc)
         assert "tool" in sig
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # 15. Engine.process() fail-safe
 # ═══════════════════════════════════════════════════════════════════════════════
-
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

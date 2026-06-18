@@ -10,11 +10,9 @@ Critical invariants:
 5. reset() for one key must not affect other keys.
 """
 
-import asyncio
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
-from tokencircuit.adapters.langgraph import LangGraphPreModelAdapter
 from tokencircuit.engine import InterventionConfig, InterventionEngine
 from tokencircuit.state_schema import default_intervention_state
 from tokencircuit.types import InterventionStage
@@ -24,10 +22,23 @@ def _stagnant_messages() -> list[dict[str, Any]]:
     """Messages that will trigger stagnation detection."""
     return [
         {"role": "user", "content": "Find X"},
-        {"role": "assistant", "content": "Searching", "tool_calls": [
-            {"id": "call_1", "type": "function", "function": {"name": "search", "arguments": '{"q": "X"}'}},  # noqa: E501
-        ]},
-        {"role": "tool", "content": "Not found", "tool_call_id": "call_1", "name": "search"},  # noqa: E501
+        {
+            "role": "assistant",
+            "content": "Searching",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "search", "arguments": '{"q": "X"}'},
+                },  # noqa: E501
+            ],
+        },
+        {
+            "role": "tool",
+            "content": "Not found",
+            "tool_call_id": "call_1",
+            "name": "search",
+        },  # noqa: E501
     ]
 
 
@@ -35,7 +46,10 @@ def _progress_messages() -> list[dict[str, Any]]:
     """Messages that represent genuine progress (novel content)."""
     return [
         {"role": "user", "content": "Summarize findings"},
-        {"role": "assistant", "content": "Based on my research, I've found the following key points about the quantum entanglement phenomenon."},  # noqa: E501
+        {
+            "role": "assistant",
+            "content": "Based on my research, I've found the following key points about the quantum entanglement phenomenon.",
+        },  # noqa: E501
     ]
 
 
@@ -44,7 +58,9 @@ class TestThreadIdIsolation:
 
     def test_independent_stagnation_counters(self):
         """Thread A's stagnation count must not affect thread B."""
-        config = InterventionConfig(nudge_threshold=2, override_threshold=4, hard_stop_threshold=6)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=2, override_threshold=4, hard_stop_threshold=6
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
 
         messages = _stagnant_messages()
@@ -52,15 +68,27 @@ class TestThreadIdIsolation:
         # Drive thread_a into stagnation
         tc_state_a = default_intervention_state()
         for turn in range(1, 5):
-            state_a = {"messages": messages, "_tc_intervention": dict(tc_state_a), "configurable": {"thread_id": "thread_a"}}  # noqa: E501
-            decision_a = engine.process(messages, state_a, thread_id="thread_a", node_name="agent")  # noqa: E501
+            state_a = {
+                "messages": messages,
+                "_tc_intervention": dict(tc_state_a),
+                "configurable": {"thread_id": "thread_a"},
+            }  # noqa: E501
+            decision_a = engine.process(
+                messages, state_a, thread_id="thread_a", node_name="agent"
+            )  # noqa: E501
             for k, v in decision_a.state_patch.items():
                 tc_state_a[k] = v
 
         # thread_b should start fresh
         tc_state_b = default_intervention_state()
-        state_b = {"messages": messages, "_tc_intervention": tc_state_b, "configurable": {"thread_id": "thread_b"}}  # noqa: E501
-        decision_b = engine.process(messages, state_b, thread_id="thread_b", node_name="agent")  # noqa: E501
+        state_b = {
+            "messages": messages,
+            "_tc_intervention": tc_state_b,
+            "configurable": {"thread_id": "thread_b"},
+        }  # noqa: E501
+        decision_b = engine.process(
+            messages, state_b, thread_id="thread_b", node_name="agent"
+        )  # noqa: E501
 
         assert decision_b.stage == InterventionStage.PASS, (
             f"Thread B should start at PASS, got {decision_b.stage.name} "
@@ -69,7 +97,9 @@ class TestThreadIdIsolation:
 
     def test_100_independent_threads(self):
         """100 concurrent threads should have completely independent states."""
-        config = InterventionConfig(nudge_threshold=3, override_threshold=5, hard_stop_threshold=8)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=3, override_threshold=5, hard_stop_threshold=8
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
 
         messages = _stagnant_messages()
@@ -83,8 +113,14 @@ class TestThreadIdIsolation:
             # Run different number of turns per thread
             num_turns = (thread_idx % 5) + 1
             for turn in range(num_turns):
-                state = {"messages": messages, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": thread_id}}  # noqa: E501
-                decision = engine.process(messages, state, thread_id=thread_id, node_name="agent")  # noqa: E501
+                state = {
+                    "messages": messages,
+                    "_tc_intervention": dict(tc_state),
+                    "configurable": {"thread_id": thread_id},
+                }  # noqa: E501
+                decision = engine.process(
+                    messages, state, thread_id=thread_id, node_name="agent"
+                )  # noqa: E501
                 stages.append(decision.stage)
                 for k, v in decision.state_patch.items():
                     tc_state[k] = v
@@ -94,11 +130,15 @@ class TestThreadIdIsolation:
         # Threads with 1 turn should all be PASS
         for tid, stages in results.items():
             if len(stages) == 1:
-                assert stages[0] == InterventionStage.PASS, f"{tid}: first turn should always be PASS"  # noqa: E501
+                assert stages[0] == InterventionStage.PASS, (
+                    f"{tid}: first turn should always be PASS"
+                )  # noqa: E501
 
     def test_reset_one_thread_does_not_affect_others(self):
         """Resetting thread_a's state must not affect thread_b."""
-        config = InterventionConfig(nudge_threshold=2, override_threshold=4, hard_stop_threshold=6)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=2, override_threshold=4, hard_stop_threshold=6
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
 
         messages = _stagnant_messages()
@@ -107,23 +147,23 @@ class TestThreadIdIsolation:
         for thread_id in ["thread_a", "thread_b"]:
             tc_state = default_intervention_state()
             for turn in range(1, 4):
-                state = {"messages": messages, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": thread_id}}  # noqa: E501
+                state = {
+                    "messages": messages,
+                    "_tc_intervention": dict(tc_state),
+                    "configurable": {"thread_id": thread_id},
+                }  # noqa: E501
                 engine.process(messages, state, thread_id=thread_id, node_name="agent")
 
         # Verify both have state
-        state_a = engine.get_engine_state("thread_a", "agent")
-        state_b = engine.get_engine_state("thread_b", "agent")
-        assert state_a["exists"] is True
-        assert state_b["exists"] is True
+        assert "thread_a:agent" in engine._thread_states
+        assert "thread_b:agent" in engine._thread_states
 
         # Reset only thread_a
         engine.reset("thread_a", "agent")
 
         # thread_a should be gone, thread_b unaffected
-        state_a_after = engine.get_engine_state("thread_a", "agent")
-        state_b_after = engine.get_engine_state("thread_b", "agent")
-        assert state_a_after["exists"] is False, "thread_a should be reset"
-        assert state_b_after["exists"] is True, "thread_b must be unaffected"
+        assert "thread_a:agent" not in engine._thread_states, "thread_a should be reset"
+        assert "thread_b:agent" in engine._thread_states, "thread_b must be unaffected"
 
 
 class TestNodeNameIsolation:
@@ -131,7 +171,9 @@ class TestNodeNameIsolation:
 
     def test_agent_and_reviewer_independent(self):
         """Two nodes in the same thread should track stagnation independently."""
-        config = InterventionConfig(nudge_threshold=2, override_threshold=4, hard_stop_threshold=6)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=2, override_threshold=4, hard_stop_threshold=6
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
 
         stagnant = _stagnant_messages()
@@ -141,12 +183,22 @@ class TestNodeNameIsolation:
 
         # Drive "agent" into stagnation
         for turn in range(1, 5):
-            state = {"messages": stagnant, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": "t1"}}  # noqa: E501
+            state = {
+                "messages": stagnant,
+                "_tc_intervention": dict(tc_state),
+                "configurable": {"thread_id": "t1"},
+            }  # noqa: E501
             engine.process(stagnant, state, thread_id="t1", node_name="agent")  # noqa: E501
 
         # "reviewer" in same thread should be independent
-        state_r = {"messages": progress, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": "t1"}}  # noqa: E501
-        decision_r = engine.process(progress, state_r, thread_id="t1", node_name="reviewer")  # noqa: E501
+        state_r = {
+            "messages": progress,
+            "_tc_intervention": dict(tc_state),
+            "configurable": {"thread_id": "t1"},
+        }  # noqa: E501
+        decision_r = engine.process(
+            progress, state_r, thread_id="t1", node_name="reviewer"
+        )  # noqa: E501
 
         assert decision_r.stage == InterventionStage.PASS, (
             f"reviewer should be PASS (independent of agent), got {decision_r.stage.name}"  # noqa: E501
@@ -154,7 +206,9 @@ class TestNodeNameIsolation:
 
     def test_three_nodes_independent_escalation(self):
         """Three nodes can be at different escalation stages simultaneously."""
-        config = InterventionConfig(nudge_threshold=2, override_threshold=3, hard_stop_threshold=5)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=2, override_threshold=3, hard_stop_threshold=5
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
         messages = _stagnant_messages()
 
@@ -163,16 +217,26 @@ class TestNodeNameIsolation:
         for node_name, num_turns in [("agent", 5), ("planner", 3), ("critic", 1)]:
             tc_state = default_intervention_state()
             for turn in range(num_turns):
-                state = {"messages": messages, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": "shared"}}  # noqa: E501
-                decision = engine.process(messages, state, thread_id="shared", node_name=node_name)  # noqa: E501
+                state = {
+                    "messages": messages,
+                    "_tc_intervention": dict(tc_state),
+                    "configurable": {"thread_id": "shared"},
+                }  # noqa: E501
+                decision = engine.process(
+                    messages, state, thread_id="shared", node_name=node_name
+                )  # noqa: E501
                 for k, v in decision.state_patch.items():
                     tc_state[k] = v
             node_stages[node_name] = decision.stage
 
         # All three should be at different stages
         assert node_stages["critic"] == InterventionStage.PASS  # Only 1 turn
-        assert node_stages["planner"] >= InterventionStage.NUDGE  # 3 turns >= nudge_threshold  # noqa: E501
-        assert node_stages["agent"] >= InterventionStage.OVERRIDE  # 5 turns >= override_threshold  # noqa: E501
+        assert (
+            node_stages["planner"] >= InterventionStage.NUDGE
+        )  # 3 turns >= nudge_threshold  # noqa: E501
+        assert (
+            node_stages["agent"] >= InterventionStage.OVERRIDE
+        )  # 5 turns >= override_threshold  # noqa: E501
 
 
 class TestConcurrentExecution:
@@ -180,19 +244,29 @@ class TestConcurrentExecution:
 
     def test_concurrent_threads_no_corruption(self):
         """Multiple OS threads processing different graph threads simultaneously."""
-        config = InterventionConfig(nudge_threshold=3, override_threshold=5, hard_stop_threshold=8)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=3, override_threshold=5, hard_stop_threshold=8
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
         messages = _stagnant_messages()
 
         errors: list[str] = []
 
-        def worker(thread_id: str, num_turns: int) -> tuple[str, list[InterventionStage]]:  # noqa: E501
+        def worker(
+            thread_id: str, num_turns: int
+        ) -> tuple[str, list[InterventionStage]]:  # noqa: E501
             stages: list[InterventionStage] = []
             tc_state = default_intervention_state()
             try:
                 for turn in range(num_turns):
-                    state = {"messages": messages, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": thread_id}}  # noqa: E501
-                    decision = engine.process(messages, state, thread_id=thread_id, node_name="agent")  # noqa: E501
+                    state = {
+                        "messages": messages,
+                        "_tc_intervention": dict(tc_state),
+                        "configurable": {"thread_id": thread_id},
+                    }  # noqa: E501
+                    decision = engine.process(
+                        messages, state, thread_id=thread_id, node_name="agent"
+                    )  # noqa: E501
                     stages.append(decision.stage)
                     for k, v in decision.state_patch.items():
                         tc_state[k] = v
@@ -221,7 +295,9 @@ class TestConcurrentExecution:
 
     def test_concurrent_same_thread_different_nodes(self):
         """Multiple nodes in the same thread processed concurrently."""
-        config = InterventionConfig(nudge_threshold=2, override_threshold=4, hard_stop_threshold=6)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=2, override_threshold=4, hard_stop_threshold=6
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
         messages = _stagnant_messages()
 
@@ -229,8 +305,14 @@ class TestConcurrentExecution:
             tc_state = default_intervention_state()
             last_stage = InterventionStage.PASS
             for turn in range(turns):
-                state = {"messages": messages, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": "shared_thread"}}  # noqa: E501
-                decision = engine.process(messages, state, thread_id="shared_thread", node_name=node_name)  # noqa: E501
+                state = {
+                    "messages": messages,
+                    "_tc_intervention": dict(tc_state),
+                    "configurable": {"thread_id": "shared_thread"},
+                }  # noqa: E501
+                decision = engine.process(
+                    messages, state, thread_id="shared_thread", node_name=node_name
+                )  # noqa: E501
                 last_stage = decision.stage
                 for k, v in decision.state_patch.items():
                     tc_state[k] = v
@@ -253,62 +335,28 @@ class TestConcurrentExecution:
         )
 
 
-class TestAdapterConcurrency:
-    """Test LangGraphPreModelAdapter under concurrent hook calls."""
-
-    def test_async_hook_concurrent_calls(self):
-        """Multiple async hook calls should not interfere."""
-        config = InterventionConfig(nudge_threshold=2, override_threshold=4, hard_stop_threshold=6)  # noqa: E501
-        adapter = LangGraphPreModelAdapter(config=config)
-
-        messages = _stagnant_messages()
-
-        async def call_hook(thread_id: str, turns: int) -> list[bool]:
-            """Returns list of whether each call had llm_input_messages."""
-            results: list[bool] = []
-            tc_state = default_intervention_state()
-            for turn in range(turns):
-                state = {
-                    "messages": messages,
-                    "_tc_intervention": dict(tc_state),
-                    "configurable": {"thread_id": thread_id},
-                }
-                result = await adapter.hook(state)
-                results.append("llm_input_messages" in result)
-                if "_tc_intervention" in result:
-                    for k, v in result["_tc_intervention"].items():
-                        tc_state[k] = v
-            return results
-
-        async def run_all():
-            # Run 10 concurrent hook call sequences
-            tasks = [call_hook(f"async_{i}", 3) for i in range(10)]
-            return await asyncio.gather(*tasks)
-
-        all_results = asyncio.run(run_all())
-
-        # All should have produced valid results (no exceptions)
-        assert len(all_results) == 10
-        for results in all_results:
-            assert len(results) == 3
-            # First turn should always be no-override (PASS)
-            assert results[0] is False, "First hook call should return no override"
-
-
 class TestStatePersistedAcrossCalls:
     """Verify state accumulates correctly across multiple process() calls."""
 
     def test_stagnation_counter_accumulates(self):
         """Consecutive stagnation count should increase across calls."""
-        config = InterventionConfig(nudge_threshold=3, override_threshold=5, hard_stop_threshold=8)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=3, override_threshold=5, hard_stop_threshold=8
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
         messages = _stagnant_messages()
         tc_state = default_intervention_state()
 
         counts: list[int] = []
         for turn in range(1, 6):
-            state = {"messages": messages, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": "acc"}}  # noqa: E501
-            decision = engine.process(messages, state, thread_id="acc", node_name="agent")  # noqa: E501
+            state = {
+                "messages": messages,
+                "_tc_intervention": dict(tc_state),
+                "configurable": {"thread_id": "acc"},
+            }  # noqa: E501
+            decision = engine.process(
+                messages, state, thread_id="acc", node_name="agent"
+            )  # noqa: E501
             for k, v in decision.state_patch.items():
                 tc_state[k] = v
             counts.append(tc_state.get("consecutive_stagnation_count", 0))
@@ -321,14 +369,22 @@ class TestStatePersistedAcrossCalls:
 
     def test_stage_persists_in_state_patch(self):
         """The current_stage should be correctly reflected in state patches."""
-        config = InterventionConfig(nudge_threshold=2, override_threshold=3, hard_stop_threshold=5)  # noqa: E501
+        config = InterventionConfig(
+            nudge_threshold=2, override_threshold=3, hard_stop_threshold=5
+        )  # noqa: E501
         engine = InterventionEngine(config=config)
         messages = _stagnant_messages()
         tc_state = default_intervention_state()
 
         for turn in range(1, 5):
-            state = {"messages": messages, "_tc_intervention": dict(tc_state), "configurable": {"thread_id": "stage"}}  # noqa: E501
-            decision = engine.process(messages, state, thread_id="stage", node_name="agent")  # noqa: E501
+            state = {
+                "messages": messages,
+                "_tc_intervention": dict(tc_state),
+                "configurable": {"thread_id": "stage"},
+            }  # noqa: E501
+            decision = engine.process(
+                messages, state, thread_id="stage", node_name="agent"
+            )  # noqa: E501
             for k, v in decision.state_patch.items():
                 tc_state[k] = v
 

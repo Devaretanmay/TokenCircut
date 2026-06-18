@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Sequence
+from typing import Any
 
 from .types import CanonicalMessage, CanonicalRole
 
@@ -20,6 +20,13 @@ _ROLE_MAP: dict[str, CanonicalRole] = {
     "function": CanonicalRole.TOOL,
 }
 
+_ROLE_TO_OPENAI: dict[CanonicalRole, str] = {
+    CanonicalRole.SYSTEM: "system",
+    CanonicalRole.HUMAN: "user",
+    CanonicalRole.AI: "assistant",
+    CanonicalRole.TOOL: "tool",
+}
+
 
 class MessageCanonicalizer:
     """
@@ -31,32 +38,8 @@ class MessageCanonicalizer:
     - Mixed lists of both formats
     """
 
-    def __init__(self) -> None:
-        # Internal cache: id(msg) -> CanonicalMessage
-        # This speeds up repeated canonicalization of the same message objects
-        # within a single session.
-        self._cache: dict[int, CanonicalMessage] = {}
-
-    def canonicalize(self, messages: Sequence[Any]) -> list[CanonicalMessage]:
-        result: list[CanonicalMessage] = []
-        for idx, msg in enumerate(messages):
-            msg_id = id(msg)
-            if msg_id in self._cache:
-                cached = self._cache[msg_id]
-                result.append(CanonicalMessage(
-                    role=cached.role,
-                    content=cached.content,
-                    tool_calls=list(cached.tool_calls) if cached.tool_calls else [],
-                    tool_call_id=cached.tool_call_id,
-                    source_index=idx,
-                    name=cached.name
-                ))
-                continue
-
-            canonical = self._convert_single(msg, idx)
-            self._cache[msg_id] = canonical
-            result.append(canonical)
-        return result
+    def canonicalize(self, messages: list[Any]) -> list[CanonicalMessage]:
+        return [self._convert_single(msg, idx) for idx, msg in enumerate(messages)]
 
     def _convert_single(self, msg: Any, index: int) -> CanonicalMessage:
         """Convert a single message (LangChain object or dict) to CanonicalMessage."""
@@ -127,8 +110,6 @@ class MessageCanonicalizer:
                     tool_calls.append(self._normalize_tool_call(tc))
                 elif hasattr(tc, "model_dump"):
                     tool_calls.append(self._normalize_tool_call(tc.model_dump()))
-                elif hasattr(tc, "dict"):
-                    tool_calls.append(self._normalize_tool_call(tc.dict()))
 
         tool_call_id = getattr(msg, "tool_call_id", None)
         name = getattr(msg, "name", None)
@@ -155,39 +136,27 @@ class MessageCanonicalizer:
 
     def _normalize_tool_call(self, tc: dict[str, Any]) -> dict[str, Any]:
         """Normalize a tool call dict to a consistent schema."""
-        call_id = tc.get("id")
-        if call_id is None:
-            call_id = tc.get("call_id") or ""
         name = tc.get("name") or tc.get("function", {}).get("name", "unknown")
-
-        # args can be in "args", "arguments", or "function.arguments"
-        args = tc.get("args")
-        if args is None:
-            args = tc.get("arguments")
-        if args is None:
-            func = tc.get("function", {})
-            args = func.get("arguments", {})
-
-        # args might be a JSON string
+        args = (
+            tc.get("args")
+            or tc.get("arguments")
+            or tc.get("function", {}).get("arguments", {})
+        )
         if isinstance(args, str):
             try:
                 args = json.loads(args)
             except (json.JSONDecodeError, ValueError):
                 args = {"_raw": args}
-
         if not isinstance(args, dict):
             args = {"_raw": str(args)}
-
-        return {"id": str(call_id), "name": str(name), "args": args}
+        return {"id": str(tc.get("id", "")), "name": str(name), "args": args}
 
     @staticmethod
-    def to_openai_format(
-        messages: list[CanonicalMessage]
-    ) -> list[dict[str, Any]]:
+    def to_openai_format(messages: list[CanonicalMessage]) -> list[dict[str, Any]]:
         """Convert canonical messages back to OpenAI API format."""
         result: list[dict[str, Any]] = []
         for msg in messages:
-            d: dict[str, Any] = {"role": MessageCanonicalizer._role_to_openai(msg.role)}
+            d: dict[str, Any] = {"role": _ROLE_TO_OPENAI[msg.role]}
 
             if msg.content:
                 d["content"] = msg.content
@@ -222,14 +191,3 @@ class MessageCanonicalizer:
 
             result.append(d)
         return result
-
-    @staticmethod
-    def _role_to_openai(role: CanonicalRole) -> str:
-        """Map CanonicalRole to OpenAI role string."""
-        mapping = {
-            CanonicalRole.SYSTEM: "system",
-            CanonicalRole.HUMAN: "user",
-            CanonicalRole.AI: "assistant",
-            CanonicalRole.TOOL: "tool",
-        }
-        return mapping[role]

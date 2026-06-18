@@ -1,4 +1,3 @@
-
 from langchain_core.messages import AIMessage, HumanMessage
 
 from tokencircuit import InterventionConfig, InterventionEngine
@@ -25,11 +24,14 @@ def test_runaway_generation_hard_stops_immediately():
 
     # Normally, it takes 8 turns of stagnation to hard stop.
     # Runaway generation should skip the ladder and stop immediately.
-    decision = engine.process(messages=messages, state=state, thread_id="test", node_name="agent")  # noqa: E501
+    decision = engine.process(
+        messages=messages, state=state, thread_id="test", node_name="agent"
+    )  # noqa: E501
 
     assert decision.stage == InterventionStage.HARD_STOP
     assert SignalType.RUNAWAY_GENERATION in decision.signals
     assert decision.should_terminate is True
+
 
 def test_runaway_generation_respects_audit_mode():
     """Verify that audit_mode suppresses the HARD_STOP mutation."""
@@ -44,7 +46,9 @@ def test_runaway_generation_respects_audit_mode():
 
     state = {"messages": messages, "_tc_intervention": default_intervention_state()}
 
-    decision = engine.process(messages=messages, state=state, thread_id="test", node_name="agent")  # noqa: E501
+    decision = engine.process(
+        messages=messages, state=state, thread_id="test", node_name="agent"
+    )  # noqa: E501
 
     # Engine still computes the hard stop internally
     assert decision.stage == InterventionStage.HARD_STOP

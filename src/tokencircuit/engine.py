@@ -19,11 +19,9 @@ from __future__ import annotations
 
 import logging
 from collections import OrderedDict
-from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import Any, Optional, Sequence
+from typing import Any, Optional
 
-from .budget import BudgetEnforcer
 from .canonicalizer import MessageCanonicalizer
 from .ledger import ToolTransactionLedger
 from .semantic_detector import SemanticStagnationDetector, StagnationAnalysis
@@ -39,15 +37,22 @@ from .types import (
 )
 from .validator import TranscriptValidator
 
+
+def _tool_calls_signature(tool_calls: list[dict[str, Any]]) -> str:
+    """Create a deduplication signature for a set of tool calls."""
+    parts: list[str] = []
+    for tc in sorted(tool_calls, key=lambda x: x.get("name", "")):
+        name = tc.get("name", "")
+        args = tc.get("args", {})
+        if isinstance(args, dict):
+            arg_types = ",".join(sorted(type(v).__name__ for v in args.values()))
+        else:
+            arg_types = "?"
+        parts.append(f"{name}({arg_types})")
+    return "|".join(parts)
+
+
 logger = logging.getLogger("tokencircuit.engine")
-
-
-def _get_tracer(name: str = "tokencircuit"):
-    try:
-        from opentelemetry import trace  # pyright: ignore[reportMissingImports]
-        return trace.get_tracer(name)
-    except ImportError:
-        return None
 
 
 class TokenCircuitError(RuntimeError):
@@ -84,16 +89,6 @@ class InterventionConfig:
     enable_transcript_validation: bool = True
     max_orphan_tolerance: int = 2
     auto_recovery: bool = True
-
-    # Budget
-    max_budget_usd: float = 0.0
-    token_pricing: dict[str, float] = field(
-        default_factory=lambda: {
-            "gpt-4o": 5.0,
-            "gpt-4o-mini": 0.15,
-            "claude-3-5-sonnet": 3.0,
-        }
-    )
 
     # Coaching
     nudge_template: str = (
@@ -141,10 +136,7 @@ class InterventionEngine:
     def __init__(self, *, config: Optional[InterventionConfig] = None) -> None:
         self._config = config or InterventionConfig()
         self._thread_states: OrderedDict[str, _PerThreadState] = OrderedDict()
-        self._budget_enforcer = BudgetEnforcer(
-            max_budget_usd=self._config.max_budget_usd,
-            token_pricing=self._config.token_pricing,
-        )
+        self._last_decisions: dict[str, InterventionDecision] = {}
 
     def _get_state(self, thread_id: str, node_name: str) -> _PerThreadState:
         """Get or create per-thread-per-node internal state."""
@@ -171,40 +163,30 @@ class InterventionEngine:
 
         return self._thread_states[key]
 
+    def get_thread_ledger(self, thread_id: str) -> ToolTransactionLedger:
+        return self._get_state(thread_id, "tool_call").ledger
+
+    def set_last_decision(self, thread_id: str, decision: InterventionDecision) -> None:
+        self._last_decisions[thread_id] = decision
+
+    def pop_last_decision(self, thread_id: str) -> InterventionDecision | None:
+        return self._last_decisions.pop(thread_id, None)
+
     def process(
         self,
-        messages: Sequence[Any],
+        messages: list[Any],
         state: dict[str, Any],
         *,
         thread_id: str,
         node_name: str,
     ) -> InterventionDecision:
-        tracer = _get_tracer()
-        ctx_manager = (
-            tracer.start_as_current_span(
-                "TokenCircuit.Intervention",
-                attributes={
-                    "thread_id": thread_id,
-                    "node_name": node_name,
-                    "audit_mode": self._config.audit_mode,
-                }
-            ) if tracer else nullcontext()
+        return self._process_impl(
+            messages, state, thread_id=thread_id, node_name=node_name
         )
-        with ctx_manager as span:
-            decision = self._process_impl(
-                messages, state, thread_id=thread_id, node_name=node_name
-            )
-
-            if decision.stage > InterventionStage.PASS and span:
-                span.set_attribute("intervention.stage", decision.stage.name)
-                for sig in decision.signals:
-                    span.add_event("SignalDetected", {"signal.type": sig.value})
-
-            return decision
 
     def _process_impl(
         self,
-        messages: Sequence[Any],
+        messages: list[Any],
         state: dict[str, Any],
         *,
         thread_id: str,
@@ -232,8 +214,20 @@ class InterventionEngine:
                 res.dropped_call_ids,
             )
 
+        runaway_signals = (
+            [SignalType.RUNAWAY_GENERATION]
+            if (
+                self._config.max_tokens_per_turn > 0
+                and canonical
+                and canonical[-1].role == CanonicalRole.AI
+                and canonical[-1].content
+                and len(canonical[-1].content) // 4 > self._config.max_tokens_per_turn
+            )
+            else []
+        )
+
         stagnation_signals, similarity_score = [], 0.0
-        if ts.detector:
+        if ts.detector and not runaway_signals:
             if not ts.detector._window:
                 ts.detector.hydrate_from_history(canonical)
             analysis = ts.detector.analyze(canonical, turn_number)
@@ -244,16 +238,18 @@ class InterventionEngine:
             ts.detector.record_fingerprint(analysis.fingerprint)
             ts.last_analysis = analysis
 
-        runaway_signals = self._detect_runaway(canonical)
         all_signals = list(
             set(validation_signals + stagnation_signals + runaway_signals)
         )
 
         prior_stagnation = tc_state.get("consecutive_stagnation_count", 0)
         consecutive_stagnation = prior_stagnation + 1 if all_signals else 0
-        current_stage = InterventionStage(
-            _stage_str_to_int(tc_state.get("current_stage", "pass"))
-        )
+        try:
+            current_stage = InterventionStage[
+                tc_state.get("current_stage", "pass").upper()
+            ]
+        except KeyError:
+            current_stage = InterventionStage.PASS
         cooldown_remaining = max(0, tc_state.get("cooldown_remaining", 0) - 1)
 
         context = InterventionContext(
@@ -279,14 +275,6 @@ class InterventionEngine:
         )
 
         return self.decide(context, canonical)
-
-    def _detect_runaway(self, canonical: list[CanonicalMessage]) -> list[SignalType]:
-        if self._config.max_tokens_per_turn > 0 and canonical:
-            last_msg = canonical[-1]
-            if last_msg.role == CanonicalRole.AI and last_msg.content:
-                if len(last_msg.content) // 4 > self._config.max_tokens_per_turn:
-                    return [SignalType.RUNAWAY_GENERATION]
-        return []
 
     def decide(
         self,
@@ -336,9 +324,17 @@ class InterventionEngine:
             )
 
         coaching = self._generate_coaching(effective_stage, context)
-        llm_messages = self._build_intervention_messages(
-            effective_stage, canonical_messages, coaching, context
-        )
+        llm_messages = None
+        if canonical_messages is None:
+            llm_messages = [{"role": "system", "content": coaching}]
+        elif effective_stage == InterventionStage.NUDGE:
+            res = MessageCanonicalizer.to_openai_format(canonical_messages)
+            res.append({"role": "system", "content": coaching})
+            llm_messages = res
+        elif effective_stage == InterventionStage.OVERRIDE:
+            llm_messages = self._build_override_messages(
+                canonical_messages, coaching, context
+            )
 
         return InterventionDecision(
             stage=effective_stage,
@@ -388,17 +384,6 @@ class InterventionEngine:
             f"{[s.value for s in context.active_signals]}."
         )
 
-    def _build_intervention_messages(self, stage, canonical, coaching, context):
-        if canonical is None:
-            return [{"role": "system", "content": coaching}]
-        if stage == InterventionStage.NUDGE:
-            res = MessageCanonicalizer.to_openai_format(canonical)
-            res.append({"role": "system", "content": coaching})
-            return res
-        if stage == InterventionStage.OVERRIDE:
-            return self._build_override_messages(canonical, coaching, context)
-        return None
-
     # ─────────────────────────────────────────────────────────────────────────
     # Message construction (ephemeral)
     # ─────────────────────────────────────────────────────────────────────────
@@ -443,7 +428,7 @@ class InterventionEngine:
 
             # For AI messages with tool_calls: deduplicate by tool signature
             if msg.role == CanonicalRole.AI and msg.tool_calls:
-                sig = self._tool_calls_signature(msg.tool_calls)
+                sig = _tool_calls_signature(msg.tool_calls)
                 if sig in seen_tool_signatures:
                     # Summarize and skip this call
                     names = [tc.get("name", "?") for tc in msg.tool_calls]
@@ -481,20 +466,6 @@ class InterventionEngine:
         result.append({"role": "system", "content": coaching})
 
         return result
-
-    @staticmethod
-    def _tool_calls_signature(tool_calls: list[dict[str, Any]]) -> str:
-        """Create a deduplication signature for a set of tool calls."""
-        parts: list[str] = []
-        for tc in sorted(tool_calls, key=lambda x: x.get("name", "")):
-            name = tc.get("name", "")
-            args = tc.get("args", {})
-            if isinstance(args, dict):
-                arg_types = ",".join(sorted(type(v).__name__ for v in args.values()))
-            else:
-                arg_types = "?"
-            parts.append(f"{name}({arg_types})")
-        return "|".join(parts)
 
     # ─────────────────────────────────────────────────────────────────────────
     # State patch construction
@@ -602,52 +573,11 @@ class InterventionEngine:
     # Public state access
     # ─────────────────────────────────────────────────────────────────────────
 
-    def get_engine_state(self, thread_id: str, node_name: str) -> dict[str, Any]:
-        """Return internal engine state for debugging."""
-        key = f"{thread_id}:{node_name}"
-        ts = self._thread_states.get(key)
-        if ts is None:
-            return {"exists": False}
-        return {
-            "exists": True,
-            "ledger_committed": ts.ledger.total_committed,
-            "ledger_orphaned": ts.ledger.total_orphaned,
-            "ledger_pending": len(ts.ledger.get_pending()),
-            "detector_window_size": ts.detector.window_size if ts.detector else 0,
-            "last_similarity": (
-                ts.last_analysis.similarity_score if ts.last_analysis else 0.0
-            ),
-        }
-
     def reset(self, thread_id: str, node_name: str) -> None:
         """Reset internal state for a thread+node."""
         key = f"{thread_id}:{node_name}"
         self._thread_states.pop(key, None)
 
-    def reset_all(self) -> None:
-        """Reset all internal state."""
-        self._thread_states.clear()
-        self._budget_enforcer.reset()
-
-    def record_usage(self, model: str, tokens: int) -> float:
-        """Record usage and enforce budget."""
-        return self._budget_enforcer.record_usage(model, tokens)
-
-    @property
-    def current_spend(self) -> float:
-        return self._budget_enforcer.current_spend
-
     @property
     def config(self) -> InterventionConfig:
         return self._config
-
-
-def _stage_str_to_int(stage_str: str) -> int:
-    """Convert stage string to IntEnum value."""
-    mapping = {
-        "pass": 0,
-        "nudge": 1,
-        "override": 2,
-        "hard_stop": 3,
-    }
-    return mapping.get(stage_str.lower(), 0)

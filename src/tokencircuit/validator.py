@@ -277,18 +277,9 @@ class TranscriptValidator:
             for m in validated
             if m.role == CanonicalRole.TOOL and m.tool_call_id
         }
-        last_ai_idx = next(
-            (
-                i
-                for i in range(len(validated) - 1, -1, -1)
-                if validated[i].role == CanonicalRole.AI and validated[i].tool_calls
-            ),
-            -1,
-        )
-
         repaired = []
-        for i, msg in enumerate(validated):
-            if msg.role == CanonicalRole.AI and msg.tool_calls and i != last_ai_idx:
+        for msg in validated:
+            if msg.role == CanonicalRole.AI and msg.tool_calls:
                 resolved = [
                     tc for tc in msg.tool_calls if tc.get("id") in resolved_call_ids
                 ]
@@ -304,5 +295,3 @@ class TranscriptValidator:
                     )
             repaired.append(msg)
         return repaired
-
-

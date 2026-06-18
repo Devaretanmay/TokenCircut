@@ -9,7 +9,6 @@ import pytest
 from tokencircuit.ledger import (
     ToolTransactionLedger,
     _classify_outcome,
-    _classify_outcome_cached,
 )
 from tokencircuit.types import (
     TransactionOutcome,
@@ -24,9 +23,9 @@ from tokencircuit.types import (
 @pytest.fixture(autouse=True)
 def _clear_classify_cache():
     """Reset the LRU cache between tests to avoid cross-test pollution."""
-    _classify_outcome_cached.cache_clear()
+    _classify_outcome.cache_clear()
     yield
-    _classify_outcome_cached.cache_clear()
+    _classify_outcome.cache_clear()
 
 
 @pytest.fixture()
@@ -113,7 +112,7 @@ class TestRegisterCall:
         txn1 = _register_call(ledger, call_id="dup")
         txn2 = _register_call(ledger, call_id="dup")
         assert txn1 is txn2
-        assert len(ledger.get_pending()) == 1
+        assert ledger._pending_count == 1
 
     def test_duplicate_call_id_after_commit(self, ledger: ToolTransactionLedger):
         """Re-registering after COMMITTED should still be idempotent."""
@@ -221,7 +220,7 @@ class TestAdvanceTurn:
         _register_call(ledger, call_id="c1", turn=0)
         assert ledger.advance_turn(1) == []  # age 1 < 3
         assert ledger.advance_turn(2) == []  # age 2 < 3
-        orphaned = ledger.advance_turn(3)     # age 3 >= 3
+        orphaned = ledger.advance_turn(3)  # age 3 >= 3
         assert len(orphaned) == 1
 
     # 8. Doesn't orphan recent calls
@@ -230,7 +229,12 @@ class TestAdvanceTurn:
         _register_call(ledger, call_id="c1", turn=5)
         orphaned = ledger.advance_turn(6)
         assert orphaned == []
-        assert ledger.get_pending()[0].call.call_id == "c1"
+        p = [
+            t
+            for t in ledger._transactions.values()
+            if t.status == TransactionStatus.PENDING
+        ]
+        assert p[0].call.call_id == "c1"
 
     def test_advance_turn_skips_committed(self, ledger: ToolTransactionLedger):
         """advance_turn should not touch COMMITTED transactions."""
@@ -263,22 +267,12 @@ class TestAdvanceTurn:
 
 
 # =========================================================================
-# 9. Query helpers: get_pending, get_orphaned, get_committed_since
+# 9. Query helpers: get_orphaned
 # =========================================================================
 
 
 class TestQueryHelpers:
     """Tests for query/filter methods."""
-
-    def test_get_pending_returns_only_pending(self, ledger: ToolTransactionLedger):
-        """get_pending must only include PENDING transactions."""
-        _register_call(ledger, call_id="c1", turn=0)
-        _register_call(ledger, call_id="c2", turn=0)
-        _register_result(ledger, call_id="c2", turn=1)
-
-        pending = ledger.get_pending()
-        assert len(pending) == 1
-        assert pending[0].call.call_id == "c1"
 
     def test_get_orphaned_returns_only_orphaned(
         self, ledger_timeout_1: ToolTransactionLedger
@@ -292,34 +286,6 @@ class TestQueryHelpers:
         orphaned = ledger_timeout_1.get_orphaned()
         assert len(orphaned) == 1
         assert orphaned[0].call.call_id == "c1"
-
-    def test_get_committed_since_filters_by_turn(self, ledger: ToolTransactionLedger):
-        """get_committed_since(turn) should only return commits since that turn."""
-        _register_call(ledger, call_id="c1", turn=0)
-        _register_result(ledger, call_id="c1", turn=1)
-        _register_call(ledger, call_id="c2", turn=2)
-        _register_result(ledger, call_id="c2", turn=3)
-
-        since_2 = ledger.get_committed_since(2)
-        assert len(since_2) == 1
-        assert since_2[0].call.call_id == "c2"
-
-    def test_get_committed_since_includes_boundary(self, ledger: ToolTransactionLedger):
-        """Turn boundary should be inclusive (>=)."""
-        _register_call(ledger, call_id="c1", turn=0)
-        _register_result(ledger, call_id="c1", turn=5)
-        assert len(ledger.get_committed_since(5)) == 1
-        assert len(ledger.get_committed_since(6)) == 0
-
-    def test_get_committed_since_empty_ledger(self, ledger: ToolTransactionLedger):
-        """Empty ledger returns empty list."""
-        assert ledger.get_committed_since(0) == []
-
-    def test_get_transaction_by_call_id(self, ledger: ToolTransactionLedger):
-        """get_transaction should return the transaction or None."""
-        _register_call(ledger, call_id="c1", turn=0)
-        assert ledger.get_transaction("c1") is not None
-        assert ledger.get_transaction("nonexistent") is None
 
     def test_total_committed_property(self, ledger: ToolTransactionLedger):
         """total_committed property should count only COMMITTED."""
@@ -399,9 +365,7 @@ class TestConsecutiveOutcomes:
         # Default limit=10 should cap at 10
         assert ledger.get_consecutive_outcomes(TransactionOutcome.EMPTY) == 10
         # Explicit smaller limit
-        assert (
-            ledger.get_consecutive_outcomes(TransactionOutcome.EMPTY, limit=5) == 5
-        )
+        assert ledger.get_consecutive_outcomes(TransactionOutcome.EMPTY, limit=5) == 5
 
 
 # =========================================================================
@@ -484,7 +448,10 @@ class TestOutcomeClassification:
     )
     def test_permanent_error_patterns(self, content: str):
         """Content matching permanent error patterns should be PERMANENT_ERROR."""
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR  # noqa: E501
+        assert (
+            _classify_outcome(content, len(content))
+            == TransactionOutcome.PERMANENT_ERROR
+        )  # noqa: E501
 
     @pytest.mark.parametrize(
         "content",
@@ -501,7 +468,10 @@ class TestOutcomeClassification:
     )
     def test_generic_error_patterns(self, content: str):
         """Generic error patterns (that aren't transient) should be PERMANENT_ERROR."""
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR  # noqa: E501
+        assert (
+            _classify_outcome(content, len(content))
+            == TransactionOutcome.PERMANENT_ERROR
+        )  # noqa: E501
 
     @pytest.mark.parametrize(
         "content",
@@ -521,7 +491,10 @@ class TestOutcomeClassification:
         """If content matches both transient and permanent patterns, transient wins."""
         # Contains both "timeout" (transient) and "not found" (permanent)
         content = "timeout while checking not found resource"
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.TRANSIENT_ERROR  # noqa: E501
+        assert (
+            _classify_outcome(content, len(content))
+            == TransactionOutcome.TRANSIENT_ERROR
+        )  # noqa: E501
 
 
 # =========================================================================
@@ -535,45 +508,45 @@ class TestClassifyOutcomeCaching:
     def test_small_content_uses_small_key(self):
         """Content under 100 chars should use 'small' as the hash key (fast path)."""
         # We test this indirectly: calling twice with the same content should hit cache.
-        _classify_outcome_cached.cache_clear()
+        _classify_outcome.cache_clear()
         result1 = _classify_outcome("hello", 5)
-        info_after_first = _classify_outcome_cached.cache_info()
+        info_after_first = _classify_outcome.cache_info()
         result2 = _classify_outcome("hello", 5)
-        info_after_second = _classify_outcome_cached.cache_info()
+        info_after_second = _classify_outcome.cache_info()
 
         assert result1 == result2
         assert info_after_second.hits == info_after_first.hits + 1
 
     def test_large_content_uses_sha256_key(self):
         """Content >= 100 chars should be hashed via SHA-256."""
-        _classify_outcome_cached.cache_clear()
+        _classify_outcome.cache_clear()
         large = "a" * 200
         result1 = _classify_outcome(large, 200)
         result2 = _classify_outcome(large, 200)
-        info = _classify_outcome_cached.cache_info()
+        info = _classify_outcome.cache_info()
 
         assert result1 == result2 == TransactionOutcome.SUCCESS
         assert info.hits >= 1
 
     def test_different_content_same_length_no_false_cache_hit(self):
         """Two different large strings should not collide in the cache."""
-        _classify_outcome_cached.cache_clear()
+        _classify_outcome.cache_clear()
         a = "a" * 200
         b = "b" * 200
         _classify_outcome(a, 200)
         _classify_outcome(b, 200)
         # Both SUCCESS but should be separate cache entries
-        info = _classify_outcome_cached.cache_info()
+        info = _classify_outcome.cache_info()
         assert info.misses >= 2
 
     def test_cache_maxsize_eviction(self):
         """After maxsize (100) entries, oldest should be evicted."""
-        _classify_outcome_cached.cache_clear()
+        _classify_outcome.cache_clear()
         # Fill cache with 101 unique small entries
         for i in range(101):
             _classify_outcome(f"unique-{i}", len(f"unique-{i}"))
 
-        info = _classify_outcome_cached.cache_info()
+        info = _classify_outcome.cache_info()
         # The cache should have had all 101 misses; size should be 100
         assert info.misses == 101
         assert info.currsize == 100
@@ -627,10 +600,9 @@ class TestReset:
 
         ledger.reset()
 
-        assert ledger.get_pending() == []
+        assert ledger._pending_count == 0
         assert ledger.get_orphaned() == []
-        assert ledger.get_committed_since(0) == []
-        assert ledger.get_transaction("c1") is None
+        assert ledger._transactions.get("c1") is None
 
     def test_reset_zeros_current_turn(self, ledger: ToolTransactionLedger):
         """reset() should set current_turn back to 0."""
@@ -653,7 +625,7 @@ class TestReset:
 
         txn = _register_call(ledger, call_id="c_new", turn=0)
         assert txn.status == TransactionStatus.PENDING
-        assert len(ledger.get_pending()) == 1
+        assert ledger._pending_count == 1
 
 
 # =========================================================================
@@ -698,12 +670,18 @@ class TestEdgeCases:
     def test_very_long_content_with_error_at_start(self):
         """Error at the start of long content should be detected."""
         content = "Error: something broke" + "x" * 10_000
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.PERMANENT_ERROR  # noqa: E501
+        assert (
+            _classify_outcome(content, len(content))
+            == TransactionOutcome.PERMANENT_ERROR
+        )  # noqa: E501
 
     def test_very_long_content_with_transient_error_at_start(self):
         """Transient error at the start of long content should be detected."""
         content = "timeout occurred" + "x" * 10_000
-        assert _classify_outcome(content, len(content)) == TransactionOutcome.TRANSIENT_ERROR  # noqa: E501
+        assert (
+            _classify_outcome(content, len(content))
+            == TransactionOutcome.TRANSIENT_ERROR
+        )  # noqa: E501
 
     def test_content_with_mixed_error_patterns(self):
         """Content with both transient and permanent patterns; transient first check wins."""  # noqa: E501
@@ -743,7 +721,7 @@ class TestEdgeCases:
 
         assert s1 == s2 == s3 == TransactionStatus.COMMITTED
         assert ledger.total_committed == 3
-        assert ledger.get_pending() == []
+        assert ledger._pending_count == 0
 
     def test_empty_string_call_id(self, ledger: ToolTransactionLedger):
         """Empty string call_id should work (no special treatment)."""
@@ -787,14 +765,14 @@ class TestFullLifecycle:
         # Turn 0: Agent makes two tool calls
         _register_call(ledger, call_id="t0-c1", tool_name="search", turn=0)
         _register_call(ledger, call_id="t0-c2", tool_name="read", turn=0)
-        assert len(ledger.get_pending()) == 2
+        assert ledger._pending_count == 2
 
         # Turn 1: Results come back
         ledger.advance_turn(1)
         _register_result(ledger, call_id="t0-c1", content="found it", turn=1)
         _register_result(ledger, call_id="t0-c2", content="file data", turn=1)
         assert ledger.total_committed == 2
-        assert len(ledger.get_pending()) == 0
+        assert ledger._pending_count == 0
 
         # Turn 1: Agent makes another call
         _register_call(ledger, call_id="t1-c1", tool_name="write", turn=1)

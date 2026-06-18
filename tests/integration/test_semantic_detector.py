@@ -10,7 +10,6 @@ Verifies:
 6. Shingle computation handles edge cases (empty text, single token, unicode).
 """
 
-
 from tokencircuit.semantic_detector import (
     SemanticStagnationDetector,
     _compute_shingles,
@@ -21,7 +20,9 @@ from tokencircuit.semantic_detector import (
 from tokencircuit.types import CanonicalMessage, CanonicalRole, SignalType
 
 
-def _ai_msg(content: str, tool_calls: list | None = None, idx: int = 0) -> CanonicalMessage:  # noqa: E501
+def _ai_msg(
+    content: str, tool_calls: list | None = None, idx: int = 0
+) -> CanonicalMessage:  # noqa: E501
     """Create AI CanonicalMessage."""
     return CanonicalMessage(
         role=CanonicalRole.AI,
@@ -78,7 +79,9 @@ class TestExactRepetitionDetection:
             messages = [_human_msg(), _ai_msg(text)]
             analysis = detector.analyze(messages, turn)
             detector.record_fingerprint(analysis.fingerprint)
-            assert not analysis.is_stagnating, f"Turn {turn}: Novel content should not stagnate"  # noqa: E501
+            assert not analysis.is_stagnating, (
+                f"Turn {turn}: Novel content should not stagnate"
+            )  # noqa: E501
 
     def test_similarity_score_is_1_for_identical(self):
         """Identical content should yield similarity score of 1.0."""
@@ -139,7 +142,13 @@ class TestParaphrasedStagnationDetection:
                 _human_msg(),
                 _ai_msg(
                     f"Attempt #{turn} to find the file.",
-                    tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": f"query_{turn}"}}],  # noqa: E501
+                    tool_calls=[
+                        {
+                            "id": f"c{turn}",
+                            "name": "search",
+                            "args": {"q": f"query_{turn}"},
+                        }
+                    ],  # noqa: E501
                 ),
             ]
             analysis = detector.analyze(messages, turn)
@@ -184,7 +193,12 @@ class TestGenuineProgressReset:
         for turn in range(1, 4):
             messages = [
                 _human_msg(),
-                _ai_msg("Searching...", tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": "x"}}]),  # noqa: E501
+                _ai_msg(
+                    "Searching...",
+                    tool_calls=[
+                        {"id": f"c{turn}", "name": "search", "args": {"q": "x"}}
+                    ],
+                ),  # noqa: E501
             ]
             analysis = detector.analyze(messages, turn)
             detector.record_fingerprint(analysis.fingerprint)
@@ -194,7 +208,13 @@ class TestGenuineProgressReset:
             _human_msg(),
             _ai_msg(
                 "Let me try reading the file directly.",
-                tool_calls=[{"id": "new_call", "name": "read_file", "args": {"path": "/data.txt"}}],  # noqa: E501
+                tool_calls=[
+                    {
+                        "id": "new_call",
+                        "name": "read_file",
+                        "args": {"path": "/data.txt"},
+                    }
+                ],  # noqa: E501
             ),
         ]
         analysis = detector.analyze(progress_messages, turn_number=5)
@@ -211,7 +231,10 @@ class TestGenuineProgressReset:
 
         # Repeated similar content
         for turn in range(1, 4):
-            messages = [_human_msg(), _ai_msg("I will search for quantum computing papers.")]  # noqa: E501
+            messages = [
+                _human_msg(),
+                _ai_msg("I will search for quantum computing papers."),
+            ]  # noqa: E501
             analysis = detector.analyze(messages, turn)
             detector.record_fingerprint(analysis.fingerprint)
 
@@ -238,7 +261,12 @@ class TestGenuineProgressReset:
         for turn in range(1, 4):
             messages = [
                 _human_msg(),
-                _ai_msg("Searching", tool_calls=[{"id": f"c{turn}", "name": "search", "args": {"q": "x"}}]),  # noqa: E501
+                _ai_msg(
+                    "Searching",
+                    tool_calls=[
+                        {"id": f"c{turn}", "name": "search", "args": {"q": "x"}}
+                    ],
+                ),  # noqa: E501
                 _tool_msg("No results found.", f"c{turn}", idx=2),
                 _ai_msg("Let me try again.", idx=3),
             ]
@@ -248,8 +276,13 @@ class TestGenuineProgressReset:
         # Now get a real result
         success_messages = [
             _human_msg(),
-            _ai_msg("Searching", tool_calls=[{"id": "c_final", "name": "search", "args": {"q": "x"}}]),  # noqa: E501
-            _tool_msg("Found 10 results: 1. Paper A, 2. Paper B, ...", "c_final", idx=2),  # noqa: E501
+            _ai_msg(
+                "Searching",
+                tool_calls=[{"id": "c_final", "name": "search", "args": {"q": "x"}}],
+            ),  # noqa: E501
+            _tool_msg(
+                "Found 10 results: 1. Paper A, 2. Paper B, ...", "c_final", idx=2
+            ),  # noqa: E501
             _ai_msg("I found relevant papers! Let me summarize them.", idx=3),
         ]
         analysis = detector.analyze(success_messages, turn_number=4)
@@ -371,7 +404,9 @@ class TestStructuralPatternExtraction:
         """AI message with tool_calls → CALL(name)."""
         messages = [
             _human_msg(),
-            _ai_msg("Searching", tool_calls=[{"id": "c1", "name": "search", "args": {}}]),  # noqa: E501
+            _ai_msg(
+                "Searching", tool_calls=[{"id": "c1", "name": "search", "args": {}}]
+            ),  # noqa: E501
         ]
         pattern = _extract_structural_pattern(messages)
         assert "CALL" in pattern
@@ -381,10 +416,13 @@ class TestStructuralPatternExtraction:
         """Multiple tool calls in one message."""
         messages = [
             _human_msg(),
-            _ai_msg("Multi", tool_calls=[
-                {"id": "c1", "name": "search", "args": {}},
-                {"id": "c2", "name": "fetch", "args": {}},
-            ]),
+            _ai_msg(
+                "Multi",
+                tool_calls=[
+                    {"id": "c1", "name": "search", "args": {}},
+                    {"id": "c2", "name": "fetch", "args": {}},
+                ],
+            ),
         ]
         pattern = _extract_structural_pattern(messages)
         assert "search" in pattern

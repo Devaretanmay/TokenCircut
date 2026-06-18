@@ -48,8 +48,8 @@ _PERMANENT_ERROR_PATTERNS: tuple[re.Pattern[str], ...] = (
 
 
 @lru_cache(maxsize=100)
-def _classify_outcome_cached(content: str, length: int) -> TransactionOutcome:
-    """Cached version of outcome classification."""
+def _classify_outcome(content: str, length: int) -> TransactionOutcome:
+    """Classify tool result outcome from content."""
     if length == 0 or not content.strip():
         return TransactionOutcome.EMPTY
 
@@ -69,11 +69,6 @@ def _classify_outcome_cached(content: str, length: int) -> TransactionOutcome:
             return TransactionOutcome.PERMANENT_ERROR
 
     return TransactionOutcome.SUCCESS
-
-
-def _classify_outcome(content: str, length: int) -> TransactionOutcome:
-    """Classify tool result as success, empty, or error based on content."""
-    return _classify_outcome_cached(content, length)
 
 
 class ToolTransactionLedger:
@@ -193,9 +188,7 @@ class ToolTransactionLedger:
 
         if existing.status == TransactionStatus.ORPHANED:
             # Was timed out but result arrived late — still treat as orphaned
-            logger.debug(
-                "Ledger: late result for orphaned call_id %r", call_id
-            )
+            logger.debug("Ledger: late result for orphaned call_id %r", call_id)
             return existing, TransactionStatus.ORPHANED
 
         # PENDING → COMMITTED
@@ -246,14 +239,6 @@ class ToolTransactionLedger:
 
         return newly_orphaned
 
-    def get_pending(self) -> list[ToolTransaction]:
-        """Return all PENDING transactions."""
-        return [
-            t
-            for t in self._transactions.values()
-            if t.status == TransactionStatus.PENDING
-        ]
-
     def get_orphaned(self) -> list[ToolTransaction]:
         """Return all ORPHANED transactions."""
         return [
@@ -261,19 +246,6 @@ class ToolTransactionLedger:
             for t in self._transactions.values()
             if t.status == TransactionStatus.ORPHANED
         ]
-
-    def get_committed_since(self, turn: int) -> list[ToolTransaction]:
-        """Return transactions committed at or after the given turn."""
-        return [
-            t
-            for t in self._transactions.values()
-            if t.status == TransactionStatus.COMMITTED
-            and (t.committed_at_turn or 0) >= turn
-        ]
-
-    def get_transaction(self, call_id: str) -> Optional[ToolTransaction]:
-        """Look up a transaction by call_id."""
-        return self._transactions.get(call_id)
 
     @property
     def total_committed(self) -> int:
