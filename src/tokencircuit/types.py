@@ -96,8 +96,8 @@ class SemanticFingerprint:
     content_hash: str
     tool_signature: str
     structural_pattern: str
-    bigram_set: frozenset[tuple[int, int]] = field(default_factory=frozenset)
-    trigram_set: frozenset[tuple[int, int, int]] = field(default_factory=frozenset)
+    bigram_set: frozenset[tuple[str, str]] = field(default_factory=frozenset)
+    trigram_set: frozenset[tuple[str, str, str]] = field(default_factory=frozenset)
 
 
 @dataclass(slots=True)

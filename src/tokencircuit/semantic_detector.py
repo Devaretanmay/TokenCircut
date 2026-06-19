@@ -42,11 +42,11 @@ _MAX_FINGERPRINT_CHARS = 20_000
 _MAX_WINDOW_SIZE = 50
 
 
-def _compute_shingles(token_ids: list[int], n: int) -> frozenset[tuple[int, ...]]:
-    """Compute n-gram shingles from token IDs."""
+def _compute_shingles(tokens: list[str], n: int) -> frozenset[tuple[str, ...]]:
+    """Compute n-gram shingles from tokens."""
     if n == 2:
-        return frozenset(pairwise(token_ids))
-    return frozenset(zip(*(token_ids[i:] for i in range(n))))
+        return frozenset(pairwise(tokens))
+    return frozenset(zip(*(tokens[i:] for i in range(n))))
 
 
 def _jaccard_similarity(a: frozenset[Any], b: frozenset[Any]) -> float:
@@ -68,12 +68,9 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _token_ids(text: str) -> list[int]:
-    """Deterministic stdlib token IDs for shingling."""
-    return [
-        int.from_bytes(hashlib.blake2b(token.encode(), digest_size=8).digest(), "big")
-        for token in re.findall(r"\w+|[^\w\s]", text)
-    ]
+def _tokens(text: str) -> list[str]:
+    """Deterministic stdlib tokens for shingling."""
+    return [token for token in re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE)]
 
 
 def _extract_structural_pattern(messages: list[CanonicalMessage]) -> str:
@@ -338,15 +335,15 @@ class SemanticStagnationDetector:
         ai_content = ai_content[:_MAX_FINGERPRINT_CHARS]
         content_hash = hashlib.sha256(ai_content.encode()).hexdigest()
         structural_pattern = _extract_structural_pattern(messages)
-        token_ids = _token_ids(_normalize_text(ai_content))
+        tokens = _tokens(_normalize_text(ai_content))
 
         return SemanticFingerprint(
             turn_number=turn_number,
             content_hash=content_hash,
             tool_signature=tool_signature,
             structural_pattern=structural_pattern,
-            bigram_set=_compute_shingles(token_ids, 2),  # type: ignore[arg-type]
-            trigram_set=_compute_shingles(token_ids, 3),  # type: ignore[arg-type]
+            bigram_set=_compute_shingles(tokens, 2),  # type: ignore[arg-type]
+            trigram_set=_compute_shingles(tokens, 3),  # type: ignore[arg-type]
         )
 
     def record_fingerprint(self, fingerprint: SemanticFingerprint) -> None:
