@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tokencircuit"
-version = "8.0.0"
+version = "8.1.0"
 description = "Detect infinite loops in LLM agentic workflows and interrupt them"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -28,6 +28,7 @@ Repository = "https://github.com/Devaretanmay/TokenCircut"
 [project.optional-dependencies]
 langgraph = ["langgraph>=1.0.8"]
 crewai = ["crewai>=0.30"]
+openai = ["openai>=1.0.0"]
 # [cli] is intentionally separate so core users don't pull in Textual.
 # Install with: pip install tokencircuit[cli]
 cli = ["textual>=0.47"]

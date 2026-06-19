@@ -79,8 +79,8 @@ The hook intercepts the agent *before* each LLM call, runs the intervention
 pipeline (~20µs), and returns ephemeral message mutations. No graph state
 is modified—the original checkpoint remains clean.
 
-### Manual graph with named hooks
 
+### Manual graph with named hooks
 ```python
 from tokencircuit import InterventionConfig, InterventionEngine
 from tokencircuit.adapters.langgraph import tc_pre_model_hook
@@ -90,6 +90,36 @@ builder.add_node(
     "agent", call_model,
     pre_model_hook=lambda s: tc_pre_model_hook(s, engine=engine, node_name="agent"),
 )
+```
+
+## Universal Framework Support
+
+TokenCircuit's core engine is 100% zero-dependency. Framework adapters are strictly isolated as optional dependencies to protect your supply chain.
+
+### CrewAI
+```bash
+pip install "tokencircuit[crewai]"
+```
+```python
+from crewai import Crew, Agent, Task
+from tokencircuit.adapters.crewai import instrument_crewai
+
+my_crew = Crew(agents=[...], tasks=[...])
+safe_crew = instrument_crewai(my_crew, config=my_config)
+safe_crew.kickoff()
+```
+
+### Raw OpenAI / AsyncOpenAI
+```bash
+pip install "tokencircuit[openai]"
+```
+```python
+from openai import OpenAI
+from tokencircuit.adapters.openai import TokenCircuitClient
+
+client = TokenCircuitClient(OpenAI(), config=my_config)
+# Drop-in replacement. Loops are intercepted before the HTTP request.
+response = client.chat.completions.create(...)
 ```
 
 ## Installation
